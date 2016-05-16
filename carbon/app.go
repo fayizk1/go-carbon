@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/lomik/go-carbon/cache"
-	"github.com/lomik/go-carbon/persister"
-	"github.com/lomik/go-carbon/receiver"
+	"github.com/fayizk1/go-carbon/cache"
+	"github.com/fayizk1/go-carbon/reader"
+	"github.com/fayizk1/go-carbon/persister"
+	"github.com/fayizk1/go-carbon/receiver"
 )
 
 type App struct {
@@ -23,7 +24,8 @@ type App struct {
 	TCP            *receiver.TCP
 	Pickle         *receiver.TCP
 	CarbonLink     *cache.CarbonlinkListener
-	Persister      *persister.Whisper
+	Persister      *persister.LevelStore
+	httpreader     *reader.HTTP
 	exit           chan bool
 }
 
@@ -219,7 +221,7 @@ func (app *App) GraceStop() {
 
 func (app *App) startPersister() {
 	if app.Config.Whisper.Enabled {
-		p := persister.NewWhisper(
+		p := persister.NewLevelStore(
 			app.Config.Whisper.DataDir,
 			app.Config.Whisper.Schemas,
 			app.Config.Whisper.Aggregation,
@@ -350,7 +352,12 @@ func (app *App) Start() (err error) {
 		app.CarbonLink = carbonlink
 	}
 	/* CARBONLINK end */
-
+	/*HttpReader */
+	if conf.HTTPReader.Enabled {
+		httpreader := reader.NewHTTPReader(conf.HTTPReader.Listen, core.Query(), app.Persister)
+		reader.StartHTTPReader()
+		app.httpreader = httpreader
+	}
 	return
 }
 

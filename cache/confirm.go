@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/lomik/go-carbon/points"
+	"github.com/fayizk1/go-carbon/points"
 )
 
 type notConfirmed struct {

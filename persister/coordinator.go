@@ -3,22 +3,16 @@ package persister
 import (
 	"fmt"
 	"hash/crc32"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
+	"path"
 	"github.com/Sirupsen/logrus"
-	"github.com/lomik/go-whisper"
-
-	"github.com/lomik/go-carbon/helper"
-	"github.com/lomik/go-carbon/points"
+	"github.com/fayizk1/go-carbon/helper"
+	"github.com/fayizk1/go-carbon/points"
 )
 
-// Whisper write data to *.wsp files
-type Whisper struct {
+type LevelStore struct {
 	helper.Stoppable
 	updateOperations    uint32
 	commitedPoints      uint32
@@ -31,13 +25,47 @@ type Whisper struct {
 	rootPath            string
 	graphPrefix         string
 	created             uint32 // counter
+	sparse              bool
 	maxUpdatesPerSecond int
-	mockStore           func(p *Whisper, values *points.Points)
+	mockStore           func(p *LevelStore, values *points.Points)
+	shards              map[string]Shard
+	Map                 *LevelMap
+	archives            *Archives
+	index               *LevelIndex
 }
 
-// NewWhisper create instance of Whisper
-func NewWhisper(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in chan *points.Points, confirm chan *points.Points) *Whisper {
-	return &Whisper{
+type Archives struct {
+	sync.Mutex
+	list map[string]*Archive
+	rootPath string
+	Map                 *LevelMap
+}
+
+func NewArchives(rootPath string, Map *LevelMap) *Archives {
+	return &Archives {
+		list : make(map[string]*Archive),
+		rootPath : rootPath,
+		Map: Map,
+	}
+}
+
+func (ars *Archives) Get(pos int) *Archive{
+	ars.Lock()
+	defer ars.Unlock()
+	arName := fmt.Sprintf("arch%d", pos)
+	ar, ok := ars.list[arName]
+	if !ok {
+		ar = NewArchive(path.Join(ars.rootPath, arName), ars.Map)
+		ars.list[arName] = ar
+	}
+	return ar
+}
+
+func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in chan *points.Points, confirm chan *points.Points) *LevelStore {
+	Map := NewMap(rootPath)
+	archives := NewArchives(rootPath, Map)
+	index := NewIndex(rootPath)
+	return &LevelStore{
 		in:                  in,
 		confirm:             confirm,
 		schemas:             schemas,
@@ -46,36 +74,44 @@ func NewWhisper(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAg
 		workersCount:        1,
 		rootPath:            rootPath,
 		maxUpdatesPerSecond: 0,
+		Map:                 Map,
+		archives:            archives,
+		index:               index,
 	}
 }
 
 // SetGraphPrefix for internal cache metrics
-func (p *Whisper) SetGraphPrefix(prefix string) {
+func (p *LevelStore) SetGraphPrefix(prefix string) {
 	p.graphPrefix = prefix
 }
 
 // SetMaxUpdatesPerSecond enable throttling
-func (p *Whisper) SetMaxUpdatesPerSecond(maxUpdatesPerSecond int) {
+func (p *LevelStore) SetMaxUpdatesPerSecond(maxUpdatesPerSecond int) {
 	p.maxUpdatesPerSecond = maxUpdatesPerSecond
 }
 
 // GetMaxUpdatesPerSecond returns current throttling speed
-func (p *Whisper) GetMaxUpdatesPerSecond() int {
+func (p *LevelStore) GetMaxUpdatesPerSecond() int {
 	return p.maxUpdatesPerSecond
 }
 
 // SetWorkers count
-func (p *Whisper) SetWorkers(count int) {
+func (p *LevelStore) SetWorkers(count int) {
 	p.workersCount = count
 }
 
+// SetSparse creation
+func (p *LevelStore) SetSparse(sparse bool) {
+	p.sparse = sparse
+}
+
 // SetMetricInterval sets doChekpoint interval
-func (p *Whisper) SetMetricInterval(interval time.Duration) {
+func (p *LevelStore) SetMetricInterval(interval time.Duration) {
 	p.metricInterval = interval
 }
 
 // Stat sends internal statistics to cache
-func (p *Whisper) Stat(metric string, value float64) {
+func (p *LevelStore) Stat(metric string, value float64) {
 	p.in <- points.OnePoint(
 		fmt.Sprintf("%spersister.%s", p.graphPrefix, metric),
 		value,
@@ -83,68 +119,68 @@ func (p *Whisper) Stat(metric string, value float64) {
 	)
 }
 
-func store(p *Whisper, values *points.Points) {
-	path := filepath.Join(p.rootPath, strings.Replace(values.Metric, ".", "/", -1)+".wsp")
-
+func store(p *LevelStore, values *points.Points) {
+	shortKey, err := p.Map.GetShortKey(values.Metric, true)
+	if err != nil {
+		logrus.Errorf("[persister] unable to get short key for %s", values.Metric)
+		return
+	}
+	err = p.index.CreateIndex(values.Metric)
+	if err != nil {
+		logrus.Errorf("[persister] Unable to create index for %s", values.Metric)
+		return
+	}
 	if p.confirm != nil {
 		defer func() { p.confirm <- values }()
 	}
-
-	w, err := whisper.Open(path)
+	aggM, err := p.Map.GetAggregationMethod(shortKey)
 	if err != nil {
-		schema := p.schemas.match(values.Metric)
-		if schema == nil {
-			logrus.Errorf("[persister] No storage schema defined for %s", values.Metric)
-			return
-		}
-
 		aggr := p.aggregation.match(values.Metric)
 		if aggr == nil {
 			logrus.Errorf("[persister] No storage aggregation defined for %s", values.Metric)
 			return
 		}
-
-		logrus.WithFields(logrus.Fields{
-			"retention":    schema.retentionStr,
-			"schema":       schema.name,
-			"aggregation":  aggr.name,
-			"xFilesFactor": aggr.xFilesFactor,
-			"method":       aggr.aggregationMethodStr,
-		}).Debugf("[persister] Creating %s", path)
-
-		if err = os.MkdirAll(filepath.Dir(path), os.ModeDir|os.ModePerm); err != nil {
-			logrus.Error(err)
-			return
-		}
-
-		w, err = whisper.Create(path, schema.retentions, aggr.aggregationMethod, float32(aggr.xFilesFactor))
+		aggM = []byte(aggr.aggregationMethodStr)
+		err = p.Map.PutAggregationMethod(shortKey, aggM)
 		if err != nil {
-			logrus.Errorf("[persister] Failed to create new whisper file %s: %s", path, err.Error())
+			logrus.Errorf("[persister] Unable to write aggr map for %s", values.Metric)
+		}
+	}
+	retnM, err := p.Map.GetSchema(shortKey)
+	if err != nil {
+		schema, ok := p.schemas.Match(values.Metric)
+		if !ok {
+			logrus.Errorf("[persister] No storage schema defined for %s", values.Metric)
 			return
 		}
-
-		atomic.AddUint32(&p.created, 1)
+		retnM = []byte(schema.retentionStr)
+		err = p.Map.PutSchema(shortKey, retnM)
+		if err != nil {
+			logrus.Errorf("[persister] Unable to write schema map for %s", values.Metric)
+		}
 	}
-
-	points := make([]*whisper.TimeSeriesPoint, len(values.Data))
-	for i, r := range values.Data {
-		points[i] = &whisper.TimeSeriesPoint{Time: int(r.Timestamp), Value: r.Value}
+	retentions, err := ParseRetentionDefs(string(retnM))
+	if err != nil {
+		logrus.Errorf("[persister] Unable to parse retention for %s", values.Metric)
+		return
 	}
-
+	for i, r := range retentions {
+		ar := p.archives.Get(i)
+		err = ar.Store(shortKey, values, int64(r.NumberOfPoints()) , time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint()), string(aggM))
+		if err != nil {
+			logrus.Errorf("[persister] Unable to write into %s - Archive %d", values.Metric, i)
+		}
+	}
 	atomic.AddUint32(&p.commitedPoints, uint32(len(values.Data)))
 	atomic.AddUint32(&p.updateOperations, 1)
-
-	defer w.Close()
-
 	defer func() {
 		if r := recover(); r != nil {
-			logrus.Errorf("[persister] UpdateMany %s recovered: %s", path, r)
+			logrus.Errorf("[persister] UpdateMany %s recovered: %s", values.Metric, r)
 		}
 	}()
-	w.UpdateMany(points)
 }
 
-func (p *Whisper) worker(in chan *points.Points, exit chan bool) {
+func (p *LevelStore) worker(in chan *points.Points, exit chan bool) {
 	storeFunc := store
 	if p.mockStore != nil {
 		storeFunc = p.mockStore
@@ -164,7 +200,7 @@ LOOP:
 	}
 }
 
-func (p *Whisper) shuffler(in chan *points.Points, out [](chan *points.Points), exit chan bool) {
+func (p *LevelStore) shuffler(in chan *points.Points, out [](chan *points.Points), exit chan bool) {
 	workers := uint32(len(out))
 
 LOOP:
@@ -187,7 +223,7 @@ LOOP:
 }
 
 // save stat
-func (p *Whisper) doCheckpoint() {
+func (p *LevelStore) doCheckpoint() {
 	updateOperations := atomic.LoadUint32(&p.updateOperations)
 	commitedPoints := atomic.LoadUint32(&p.commitedPoints)
 	atomic.AddUint32(&p.updateOperations, -updateOperations)
@@ -215,7 +251,7 @@ func (p *Whisper) doCheckpoint() {
 }
 
 // stat timer
-func (p *Whisper) statWorker(exit chan bool) {
+func (p *LevelStore) statWorker(exit chan bool) {
 	ticker := time.NewTicker(p.metricInterval)
 	defer ticker.Stop()
 
@@ -290,20 +326,16 @@ func throttleChan(in chan *points.Points, ratePerSec int, exit chan bool) chan *
 }
 
 // Start worker
-func (p *Whisper) Start() error {
+func (p *LevelStore) Start() error {
 
 	return p.StartFunc(func() error {
 
 		p.Go(func(exitChan chan bool) {
 			p.statWorker(exitChan)
 		})
-
 		p.WithExit(func(exitChan chan bool) {
-
 			inChan := p.in
-
 			readerExit := exitChan
-
 			if p.maxUpdatesPerSecond > 0 {
 				inChan = throttleChan(inChan, p.maxUpdatesPerSecond, exitChan)
 				readerExit = nil // read all before channel is closed
@@ -323,14 +355,55 @@ func (p *Whisper) Start() error {
 						p.worker(ch, nil)
 					})
 				}
-
 				p.Go(func(e chan bool) {
 					p.shuffler(inChan, channels, readerExit)
 				})
 			}
-
 		})
-
 		return nil
 	})
 }
+
+func (p *LevelStore) FindNodes(key string) KeyNode {
+	children, err := p.index.GetChildren(key)
+	if err  != nil {
+		logrus.Errorf("[persister] Unable to find nodes %s", err.Error())
+		return KeyNode{isleaf : false, children : nil }
+	}
+	isleaf := false
+	if len(children) == 0 {
+		isleaf = true
+	}
+	return KeyNode {isleaf : isleaf, children : children}
+}
+
+func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (Points, int, int) {
+	shortKey, err := p.Map.GetShortKey(name, false)
+	if err != nil {
+		logrus.Errorf("[persister] unable to get short key for %s", name)
+		return nil, 0, 0
+	}
+	retnM, err := p.Map.GetSchema(shortKey)
+	if err != nil {
+		logrus.Errorf("[persister] Unable to get schema map for %s %v", name, err)
+		return nil, 0, 0
+	}
+	retentions, err := ParseRetentionDefs(string(retnM))
+	if err != nil {
+		logrus.Errorf("[persister] Unable to parse retention for %s", name)
+		return nil, 0, 0
+	}
+	var step, arcpos, npoints int
+	for i, r := range retentions {
+		arcpos = i
+		if int64(time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint())) < end {
+			step = r.SecondsPerPoint()
+			npoints = r.SecondsPerPoint()
+			break
+		}
+	}
+	ar := p.archives.Get(arcpos)
+	return ar.GetData(start, end, shortKey, sorting), step, npoints
+}
+
+

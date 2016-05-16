@@ -13,7 +13,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/hydrogen18/stalecucumber"
 
-	"github.com/lomik/go-carbon/helper"
+	"github.com/fayizk1/go-carbon/helper"
 )
 
 // CarbonlinkRequest ...

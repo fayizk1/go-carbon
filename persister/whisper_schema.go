@@ -10,10 +10,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
+	
+	"github.com/lomik/go-whisper"
 	"github.com/Sirupsen/logrus"
 	"github.com/alyu/configparser"
-	"github.com/lomik/go-whisper"
 )
 
 type whisperSchemaItem struct {
@@ -62,6 +62,7 @@ func ParseRetentionDefs(retentionDefs string) (whisper.Retentions, error) {
 	}
 	return retentions, nil
 }
+
 
 // NewWhisperSchemas create instance of WhisperSchemas
 func NewWhisperSchemas() *WhisperSchemas {
@@ -136,11 +137,11 @@ func ReadWhisperSchemas(file string) (*WhisperSchemas, error) {
 }
 
 // Match find schema for metric
-func (s *WhisperSchemas) match(metric string) *whisperSchemaItem {
-	for _, s := range s.Data {
-		if s.pattern.MatchString(metric) {
-			return s
+func (s *WhisperSchemas) Match(metric string) (*whisperSchemaItem, bool) {
+	for _, schema := range s.Data {
+		if schema.pattern.MatchString(metric) {
+			return schema, true
 		}
 	}
-	return nil
+	return nil, false
 }

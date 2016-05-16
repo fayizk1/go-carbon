@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/lomik/go-carbon/helper"
-	"github.com/lomik/go-carbon/points"
+	"github.com/fayizk1/go-carbon/helper"
+	"github.com/fayizk1/go-carbon/points"
 
 	"github.com/Sirupsen/logrus"
 )
@@ -256,7 +256,6 @@ MAIN_LOOP:
 			c.doCheckpoint()
 		case query := <-c.queryChan: // carbonlink
 			c.queryCnt++
-
 			if values != nil && values.Metric == query.Metric {
 				query.CacheData = values
 			} else if v, ok := c.data[query.Metric]; ok {

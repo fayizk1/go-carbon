@@ -6,8 +6,8 @@ import (
 	"runtime/pprof"
 	"testing"
 
-	"github.com/lomik/go-carbon/carbon"
-	"github.com/lomik/go-carbon/qa"
+	"github.com/fayizk1/go-carbon/carbon"
+	"github.com/fayizk1/go-carbon/qa"
 	"github.com/stretchr/testify/assert"
 )
 

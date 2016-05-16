@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lomik/go-carbon/helper"
-	"github.com/lomik/go-carbon/points"
+	"github.com/fayizk1/go-carbon/helper"
+	"github.com/fayizk1/go-carbon/points"
 
 	"github.com/Sirupsen/logrus"
 )

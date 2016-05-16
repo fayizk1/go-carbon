@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lomik/go-carbon/logging"
-	"github.com/lomik/go-carbon/points"
+	"github.com/fayizk1/go-carbon/logging"
+	"github.com/fayizk1/go-carbon/points"
 	"github.com/stretchr/testify/assert"
 )
 

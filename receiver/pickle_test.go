@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lomik/go-carbon/logging"
-	"github.com/lomik/go-carbon/points"
+	"github.com/fayizk1/go-carbon/logging"
+	"github.com/fayizk1/go-carbon/points"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -35,7 +35,7 @@ func TestPickle(t *testing.T) {
 	}
 }
 
-// https://github.com/lomik/go-carbon/issues/30
+// https://github.com/fayizk1/go-carbon/issues/30
 func TestPickleMemoryError(t *testing.T) {
 	assert := assert.New(t)
 	test := newTCPTestCase(t, true)

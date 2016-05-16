@@ -4,8 +4,8 @@ Priority: optional
 Maintainer: Dave Rawks <dave@pandora.com>
 Build-Depends: debhelper (>= 9), make, golang
 Standards-Version: 3.9.5
-Homepage: https://github.com/lomik/go-carbon
-Vcs-Git: https://github.com/lomik/go-carbon.git
+Homepage: https://github.com/fayizk1/go-carbon
+Vcs-Git: https://github.com/fayizk1/go-carbon.git
 
 Package: go-carbon
 Architecture: any

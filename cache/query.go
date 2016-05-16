@@ -1,6 +1,6 @@
 package cache
 
-import "github.com/lomik/go-carbon/points"
+import "github.com/fayizk1/go-carbon/points"
 
 // Query request from carbonlink
 type Query struct {

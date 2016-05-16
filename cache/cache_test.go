@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lomik/go-carbon/points"
+	"github.com/fayizk1/go-carbon/points"
 )
 
 func TestCache(t *testing.T) {

@@ -1,4 +1,4 @@
-go-carbon [![Build Status](https://travis-ci.org/lomik/go-carbon.svg?branch=master)](https://travis-ci.org/lomik/go-carbon)
+go-carbon [![Build Status](https://travis-ci.org/fayizk1/go-carbon.svg?branch=master)](https://travis-ci.org/fayizk1/go-carbon)
 ============
 
 Golang implementation of Graphite/Carbon server with classic architecture: Agent -> Cache -> Persister
@@ -26,10 +26,10 @@ The result of replacing "carbon" to "go-carbon" on a server with a load up to 90
 ![Success story](doc/success1.png)
 
 ## Installation
-Use binary packages from [releases page](https://github.com/lomik/go-carbon/releases) or build manually:
+Use binary packages from [releases page](https://github.com/fayizk1/go-carbon/releases) or build manually:
 ```
 # build binary
-git clone https://github.com/lomik/go-carbon.git
+git clone https://github.com/fayizk1/go-carbon.git
 cd go-carbon
 make submodules
 make

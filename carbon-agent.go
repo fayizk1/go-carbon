@@ -14,8 +14,8 @@ import (
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/lomik/go-carbon/carbon"
-	"github.com/lomik/go-carbon/logging"
+	"github.com/fayizk1/go-carbon/carbon"
+	"github.com/fayizk1/go-carbon/logging"
 	"github.com/lomik/go-daemon"
 )
 

@@ -202,3 +202,4 @@ func (p *Points) Eq(other *Points) bool {
 	}
 	return true
 }
+

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/lomik/go-carbon/persister"
+	"github.com/fayizk1/go-carbon/persister"
 )
 
 // Duration wrapper time.Duration for TOML
@@ -84,6 +84,11 @@ type carbonlinkConfig struct {
 	QueryTimeout *Duration `toml:"query-timeout"`
 }
 
+type httpreaderConfig struct {
+	Listen       string    `toml:"listen"`
+	Enabled      bool      `toml:"enabled"`
+}
+
 type pprofConfig struct {
 	Listen  string `toml:"listen"`
 	Enabled bool   `toml:"enabled"`
@@ -98,6 +103,7 @@ type Config struct {
 	Tcp        tcpConfig        `toml:"tcp"`
 	Pickle     pickleConfig     `toml:"pickle"`
 	Carbonlink carbonlinkConfig `toml:"carbonlink"`
+	HTTPReader httpreaderConfig `toml:"httpreader"`
 	Pprof      pprofConfig      `toml:"pprof"`
 }
 
@@ -139,6 +145,10 @@ func NewConfig() *Config {
 			Listen:         ":2004",
 			Enabled:        true,
 			MaxMessageSize: 67108864, // 64 Mb
+		},
+		HTTPReader: httpreaderConfig{
+			Listen: ":8080",
+			Enabled: true,
 		},
 		Carbonlink: carbonlinkConfig{
 			Listen:  "127.0.0.1:7002",
