@@ -40,7 +40,11 @@ func (idx *LevelIndex) CreateIndex(name string) error {
 	var child, curname string
 	for i := range segnames {
 		var sibilings []string
-		curname = curname + "." + segnames[i]
+		if curname == "" {
+			curname = segnames[i]
+		} else {
+			curname = strings.Join([]string{curname, segnames[i]},".")
+		}
 		if (i+1) < len(segnames) {
 			child = segnames[i+1]
 		}
