@@ -368,13 +368,13 @@ func (p *LevelStore) FindNodes(key string) KeyNode {
 	children, err := p.index.GetChildren(key)
 	if err  != nil {
 		logrus.Errorf("[persister] Unable to find nodes %s", err.Error())
-		return KeyNode{isleaf : false, children : nil }
+		return KeyNode{Isleaf : false, Children : nil }
 	}
 	isleaf := false
 	if len(children) == 0 {
 		isleaf = true
 	}
-	return KeyNode {isleaf : isleaf, children : children}
+	return KeyNode {Isleaf : isleaf, Children : children}
 }
 
 func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (Points, int, int) {

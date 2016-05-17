@@ -14,8 +14,8 @@ type ShardData struct {
 }
 
 type KeyNode struct {
-	isleaf bool `json:"isbool"`
-	children []string `json:"children"`
+	Isleaf bool `json:"isleaf"`
+	Children []string `json:"children"`
 }
 
 type Points []points.Point
