@@ -92,6 +92,9 @@ func serveQueryRange(w http.ResponseWriter, r *http.Request) {
 	cData := make(map[int64]float64)
 	for _, pts := range cacheQ.InFlightData {
 		for _, item := range pts.Data {
+			if item.Timestamp > end || item.Timestamp < start {
+				continue
+			}
 			tpoint := item.Timestamp - (item.Timestamp % int64(step))
 			switch aggM {
 			case "sum":
@@ -131,6 +134,9 @@ func serveQueryRange(w http.ResponseWriter, r *http.Request) {
 	}
 	if cacheQ.CacheData != nil {
 		for _, item := range cacheQ.CacheData.Data {
+                        if item.Timestamp > end || item.Timestamp < start {
+				continue
+			}
 			tpoint := item.Timestamp - (item.Timestamp % int64(step))
 			switch aggM {
 			case "sum":
