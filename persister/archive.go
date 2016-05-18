@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 	"sort"
+	"path"
 	"strconv"
 	"errors"
 	"github.com/fayizk1/go-carbon/points"
@@ -46,7 +47,13 @@ func (sds *Shards) GetShard(name string, create bool) *Shard {
 		return shard
 	}
 	if !create {
-		return nil
+		fileInfo, err := os.Stat(path.Join(sds.basepath, name))
+		if err != nil {
+			log.Println("[archive] -", err)
+			return nil
+		} else if !fileInfo.IsDir() {
+			return nil
+		}
 	}
 	shard, err := Newshard(sds.basepath, name)
 	if err != nil {
@@ -183,10 +190,11 @@ func (ar *Archive) GetData(start, end int64, key []byte, sorting bool) Points {
 		return nil
 	}
 	var wg sync.WaitGroup
-	for ; ct.Day() <= et.Day(); ct.Add(24 * time.Hour) {
+	for ; ct.Day() <= et.Day(); ct = ct.Add(24 * time.Hour) {
 		shard := ar.shards.GetShard(ct.Format("20060102"), false)
 		if shard == nil {
 			log.Println("[persistor] Unable to locate shard", ct.Format("20060102"))
+			continue
 		}
 		wg.Add(1)
 		go func(sh *Shard) {
