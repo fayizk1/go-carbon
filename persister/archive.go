@@ -189,13 +189,13 @@ func (ar *Archive) GetData(start, end int64, key []byte, sorting bool) Points {
 			log.Println("[persistor] Unable to locate shard", ct.Format("20060102"))
 		}
 		wg.Add(1)
-		go func(sh *Shard, w sync.WaitGroup) {
-			defer w.Done()
+		go func(sh *Shard) {
+			defer wg.Done()
 			pt := sh.RangeScan(start_key, end_key ,key)
 			amp.Lock()
 			defer amp.Unlock()
 			amp.points = append(amp.points, pt...)
-		}(shard, wg)
+		}(shard)
 	}
 	wg.Wait()
 	if sorting {

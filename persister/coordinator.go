@@ -166,7 +166,7 @@ func store(p *LevelStore, values *points.Points) {
 	}
 	for i, r := range retentions {
 		ar := p.archives.Get(i)
-		err = ar.Store(shortKey, values, int64(r.NumberOfPoints()) , time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint()), string(aggM))
+		err = ar.Store(shortKey, values, int64(r.SecondsPerPoint()) , time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint()), string(aggM))
 		if err != nil {
 			logrus.Errorf("[persister] Unable to write into %s - Archive %d", values.Metric, i)
 		}

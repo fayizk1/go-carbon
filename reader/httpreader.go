@@ -98,11 +98,13 @@ func serveQueryRange(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
-	for _, q := range cacheQ.CacheData.Data {
-		cPoints = append(cPoints, points.Point{
-			Timestamp : (q.Timestamp - (q.Timestamp % int64(step))),
-			Value :q.Value,
-		})
+	if cacheQ.CacheData != nil {
+		for _, q := range cacheQ.CacheData.Data {
+			cPoints = append(cPoints, points.Point{
+				Timestamp : (q.Timestamp - (q.Timestamp % int64(step))),
+				Value :q.Value,
+			})
+		}
 	}
 	pdata = append(pdata, cPoints...)
 	sort.Sort(pdata)
