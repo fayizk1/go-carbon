@@ -377,21 +377,26 @@ func (p *LevelStore) FindNodes(key string) KeyNode {
 	return KeyNode {Isleaf : isleaf, Children : children}
 }
 
-func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (Points, int, int) {
+func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (Points, int, int, string) {
 	shortKey, err := p.Map.GetShortKey(name, false)
 	if err != nil {
 		logrus.Errorf("[persister] unable to get short key for %s", name)
-		return nil, 0, 0
+		return nil, 0, 0, "average"
+	}
+	aggM, err := p.Map.GetAggregationMethod(shortKey)
+	if err != nil {
+		logrus.Errorf("[persister] Unable to read agg method, setting default s %s", err.Error())
+		aggM = []byte("average")
 	}
 	retnM, err := p.Map.GetSchema(shortKey)
 	if err != nil {
 		logrus.Errorf("[persister] Unable to get schema map for %s %v", name, err)
-		return nil, 0, 0
+		return nil, 0, 0, string(aggM)
 	}
 	retentions, err := ParseRetentionDefs(string(retnM))
 	if err != nil {
 		logrus.Errorf("[persister] Unable to parse retention for %s", name)
-		return nil, 0, 0
+		return nil, 0, 0, string(aggM)
 	}
 	var step, arcpos, npoints int
 	for i, r := range retentions {
@@ -403,7 +408,6 @@ func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (
 		}
 	}
 	ar := p.archives.Get(arcpos)
-	return ar.GetData(start, end, shortKey, sorting), step, npoints
+	return ar.GetData(start, end, shortKey, sorting), step, npoints, string(aggM)
 }
-
 

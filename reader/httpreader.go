@@ -73,7 +73,7 @@ func serveQueryRange(w http.ResponseWriter, r *http.Request) {
 		logrus.Infof("[httpreader] cache no reciever after 2 sec(timeout)")
 		cacheQ = nil // empty reply
 	}
-	pdata, step, _ := h.persistor.GetRangeData(name, start, end, false)
+	pdata, step, _, aggM := h.persistor.GetRangeData(name, start, end, false)
 	if cacheQ != nil {
 		select {
 		case <-cacheQ.Wait:
@@ -89,22 +89,87 @@ func serveQueryRange(w http.ResponseWriter, r *http.Request) {
 		w.Write(data)
 		return
 	}
-	var cPoints []points.Point
+	cData := make(map[int64]float64)
 	for _, pts := range cacheQ.InFlightData {
 		for _, item := range pts.Data {
-			cPoints = append(cPoints, points.Point{
+			tpoint := item.Timestamp - (item.Timestamp % int64(step))
+			switch aggM {
+			case "sum":
+				if cv, ok := cData[tpoint]; ok {
+					cData[tpoint] = cv + item.Value
+				} else {
+					cData[tpoint] = item.Value
+				}
+			case "max" :
+				if cv, ok := cData[tpoint];ok {
+					if item.Value > cv {
+						cData[tpoint] =  item.Value
+					}
+				} else {
+					cData[tpoint] = item.Value
+				}
+			case "min":
+				if cv, ok := cData[tpoint];ok {
+					if item.Value < cv {
+						cData[tpoint] =  item.Value
+					}
+				} else {
+					cData[tpoint] = item.Value
+				}
+			case "average":
+				if cv, ok := cData[tpoint];ok {
+					cData[tpoint] =  (cv + item.Value) / 2
+				} else {
+					cData[tpoint] = item.Value
+				}
+			}
+			/*cPoints = append(cPoints, points.Point{
 				Timestamp : (item.Timestamp - (item.Timestamp % int64(step))),
 				Value : item.Value,
-			})
+			})*/
 		}
 	}
 	if cacheQ.CacheData != nil {
-		for _, q := range cacheQ.CacheData.Data {
-			cPoints = append(cPoints, points.Point{
-				Timestamp : (q.Timestamp - (q.Timestamp % int64(step))),
-				Value :q.Value,
-			})
+		for _, item := range cacheQ.CacheData.Data {
+			tpoint := item.Timestamp - (item.Timestamp % int64(step))
+			switch aggM {
+			case "sum":
+				if cv, ok := cData[tpoint]; ok {
+					cData[tpoint] = cv + item.Value
+				} else {
+					cData[tpoint] = item.Value
+				}
+			case "max" :
+				if cv, ok := cData[tpoint];ok {
+					if item.Value > cv {
+						cData[tpoint] =  item.Value
+					}
+				} else {
+					cData[tpoint] = item.Value
+				}
+			case "min":
+				if cv, ok := cData[tpoint];ok {
+					if item.Value < cv {
+						cData[tpoint] =  item.Value
+					}
+				} else {
+					cData[tpoint] = item.Value
+				}
+			case "average":
+				if cv, ok := cData[tpoint];ok {
+					cData[tpoint] =  (cv + item.Value) / 2
+				} else {
+					cData[tpoint] = item.Value
+				}
+			}	
 		}
+	}
+	var cPoints []points.Point
+	for k, v := range cData {
+		cPoints = append(cPoints, points.Point{
+			Timestamp : k,
+			Value : v,
+		})
 	}
 	pdata = append(pdata, cPoints...)
 	sort.Sort(pdata)
