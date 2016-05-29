@@ -13,6 +13,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
+const DAYSECONDS int64 = 86400
 
 type AtomicPoints struct {
 	sync.Mutex
@@ -175,6 +176,10 @@ trans_loop:
 }
 
 func (ar *Archive) GetData(start, end int64, key []byte, sorting bool) Points {
+        if start > end {
+                log.Println("Warning: query start time is higher than end time")
+                return nil
+        }
 	ar.RLock()
 	defer ar.RUnlock()
 	if !ar.isopen {
@@ -185,12 +190,8 @@ func (ar *Archive) GetData(start, end int64, key []byte, sorting bool) Points {
 	end_key := GenMetricKey(key, end)
 	ct := time.Unix(start, 0)
 	et := time.Unix(end, 0)
-	if ct.Day() > et.Day() {
-		log.Println("Warning: query start time is higher than end time")
-		return nil
-	}
 	var wg sync.WaitGroup
-	for ; ct.Day() <= et.Day(); ct = ct.Add(24 * time.Hour) {
+	for ; (ct.Unix() - (ct.Unix() %DAYSECONDS)) <= (et.Unix() - (et.Unix() % DAYSECONDS)); ct = ct.Add(24 * time.Hour) {
 		shard := ar.shards.GetShard(ct.Format("20060102"), false)
 		if shard == nil {
 			log.Println("[persistor] Unable to locate shard", ct.Format("20060102"))
