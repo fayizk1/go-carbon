@@ -13,10 +13,6 @@ type ShardData struct {
 	Value     float64
 }
 
-type KeyNode struct {
-	Isleaf bool `json:"isleaf"`
-	Children []string `json:"children"`
-}
 
 type Points []points.Point
 

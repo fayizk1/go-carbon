@@ -2,14 +2,23 @@ package persister
 
 import (
 	"path"
+	"errors"
 	"strings"
 	"encoding/json"
 	leveldb_filter "github.com/syndtr/goleveldb/leveldb/filter"
 	leveldb_opt "github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/gobwas/glob"
+	"github.com/Sirupsen/logrus"
 )
 
 const INDEX_CACHE_SIZE = 40 << 20
+
+type IndexType struct {
+	Isleaf bool `json:"isbool"`
+	FullName string `json:"fullname"`
+	LastNode string `json:"lastnode"`
+}
 
 type LevelIndex struct {
 	Path string
@@ -41,12 +50,30 @@ func (idx *LevelIndex) CreateIndex(name string) error {
 	for i := range segnames {
 		var sibilings []string
 		if curname == "" {
+			var rmembers []string
+			rdata, err := idx.DB.Get([]byte("."), nil)
+			if err != leveldb.ErrNotFound && err != nil {
+				return err
+			} else if err == leveldb.ErrNotFound {
+				rdata = []byte("[]")
+			}
+			if err = json.Unmarshal(rdata, &rmembers); err != nil {
+				return err
+			}
+			rmembers = append(rmembers, segnames[i])
+			rval, _ := json.Marshal(rmembers)
+			err = idx.DB.Put([]byte("."), rval, nil)
+			if err != nil {
+				return err
+			}
 			curname = segnames[i]
 		} else {
 			curname = strings.Join([]string{curname, segnames[i]},".")
 		}
 		if (i+1) < len(segnames) {
 			child = segnames[i+1]
+		} else {
+			child = ""
 		}
 		data, err := idx.DB.Get([]byte(curname), nil)
 		if err != leveldb.ErrNotFound && err != nil {
@@ -71,8 +98,15 @@ func (idx *LevelIndex) CreateIndex(name string) error {
 	return nil
 }
 
-func (idx *LevelIndex) GetChildren(name string) ([]string, error) {
-	data, err := idx.DB.Get([]byte(name), nil)
+func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]IndexType, error) {
+	var parent string
+	var AllChildren []IndexType
+	if len(resolved) == 0 {
+		parent = "."
+	} else {
+		parent = strings.Join(resolved, ".")
+	}
+	data, err := idx.DB.Get([]byte(parent), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +114,117 @@ func (idx *LevelIndex) GetChildren(name string) ([]string, error) {
 	if err = json.Unmarshal(data, &sibilings); err != nil {
 		return nil, err
 	}
-	return sibilings, nil
+	if len(unResolved) == 0 {
+		var fullName string
+		for i := range sibilings {
+			if parent == "." {
+				fullName = sibilings[i]
+			} else {
+				fullName = parent + "." + sibilings[i]
+			}
+			sdata, err := idx.DB.Get([]byte(fullName), nil)
+			if err != nil && err != leveldb.ErrNotFound {
+				logrus.Println(err)
+				continue
+			} else if err == leveldb.ErrNotFound {
+				AllChildren = append(AllChildren, IndexType{Isleaf : true, FullName : fullName, LastNode : sibilings[i]})
+				continue
+			}
+			var tsibilings []string
+			if err = json.Unmarshal(sdata, &tsibilings); err != nil || len(tsibilings) == 0{
+				AllChildren = append(AllChildren, IndexType{Isleaf : true, FullName : fullName, LastNode : sibilings[i]})
+				continue
+			}
+			AllChildren = append(AllChildren, IndexType{Isleaf : false, FullName : fullName, LastNode : sibilings[i]})
+		}
+		return AllChildren, nil
+	}
+	if len(unResolved[0]) == 0 {
+		return nil , errors.New("Empty pattern")
+	}
+	pattern := unResolved[0]
+	if len(unResolved) == 1 {
+		if strings.IndexAny(pattern, "*{}[]") == -1 {
+			pattern = pattern + "*"
+		}
+	}
+	g := glob.MustCompile(pattern)
+	for i := range sibilings {
+		if !g.Match(sibilings[i]) {
+			continue
+		}
+		rkey :=  make([]string, len(resolved))
+		urkey := make([]string, len(resolved) - 1)
+		copy(rkey, resolved)
+		rkey = append(rkey, sibilings[i])
+		copy(urkey, unResolved[1:])
+		tempChildren, err := idx.GetChildrenSpecial(rkey, urkey)
+		if err != nil {
+			logrus.Println("Unable to solve keys", err)
+		}
+		if tempChildren == nil {
+			continue
+		}
+		AllChildren = append(AllChildren, tempChildren...)
+	}
+	return AllChildren, nil
+}
+
+func (idx *LevelIndex) GetChildren(name string) ([]IndexType, error) {
+	var sibilings []string
+	var AllChildren []IndexType
+	segnames := strings.Split(name, ".")
+	if strings.IndexAny(name, "*[]{}") > 0 {
+		return idx.GetChildrenSpecial(nil, segnames)
+	} else {
+		var parentNodes, lastNode string
+		if len(segnames) == 1 {
+			parentNodes = "."
+			lastNode = segnames[0]
+		} else {
+			parentNodes = strings.Join(segnames[:len(segnames)-1], ".")
+			lastNode = segnames[len(segnames)-1]
+		}
+		data, err := idx.DB.Get([]byte(parentNodes), nil)
+		if err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal(data, &sibilings); err != nil {
+			return nil, err
+		}
+		var validSiblings []string
+		for j := range sibilings {
+			if strings.HasPrefix(sibilings[j], lastNode) {
+				validSiblings = append(validSiblings, sibilings[j])
+			}
+		}
+		for k := range validSiblings {
+			fullName := ""
+			if parentNodes == "." {
+				parentNodes = ""
+				fullName = validSiblings[k]
+			} else {
+				fullName = parentNodes + "." + validSiblings[k]
+			}
+			data, err := idx.DB.Get([]byte(fullName), nil)
+			if err != nil && err != leveldb.ErrNotFound {
+				return nil, err
+			} else if err == leveldb.ErrNotFound {
+				AllChildren = append(AllChildren, IndexType{Isleaf : true, FullName : fullName, LastNode : validSiblings[k]})
+				continue
+			}
+			var nodeChildren []string
+			err = json.Unmarshal(data, &nodeChildren)
+			if err != nil  || len(nodeChildren) == 0 {
+				AllChildren = append(AllChildren, IndexType{Isleaf : true, FullName : fullName, LastNode : validSiblings[k]})
+				continue
+			} else {
+				AllChildren = append(AllChildren, IndexType{Isleaf : false, FullName : fullName, LastNode : validSiblings[k]})
+				continue
+			}
+		}
+	}
+	return AllChildren, nil
 }
 
 func (idx *LevelIndex) Close() {
