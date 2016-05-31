@@ -60,7 +60,11 @@ func (idx *LevelIndex) CreateIndex(name string) error {
 			if err = json.Unmarshal(rdata, &rmembers); err != nil {
 				return err
 			}
-			rmembers = append(rmembers, segnames[i])
+			if len(rmembers) > 0 {
+				if !InSlice(segnames[i], sibilings) {
+					rmembers = append(rmembers, segnames[i])
+				}
+			}
 			rval, _ := json.Marshal(rmembers)
 			err = idx.DB.Put([]byte("."), rval, nil)
 			if err != nil {
