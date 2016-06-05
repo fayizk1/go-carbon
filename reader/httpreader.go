@@ -90,7 +90,7 @@ func serveQueryRange(w http.ResponseWriter, r *http.Request) {
 	}
 	if cacheQ == nil || (cacheQ.InFlightData == nil && cacheQ.CacheData == nil ){
 		sort.Sort(pdata)
-		data, _ := json.Marshal(pdata)
+		data, _ := json.Marshal(PointsData{Pts : pdata, Step : step})
 		w.Write(data)
 		return
 	}
