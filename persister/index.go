@@ -141,7 +141,7 @@ func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]Inde
 	}
 	pattern := unResolved[0]
 	if len(unResolved) == 1 {
-		if strings.IndexAny(pattern, "*{}[]") == -1 {
+		if !strings.ContainsAny(pattern, "*{}[]")  {
 			pattern = pattern + "*"
 		}
 	}
@@ -171,7 +171,7 @@ func (idx *LevelIndex) GetChildren(name string) ([]IndexType, error) {
 	var sibilings []string
 	var AllChildren []IndexType
 	segnames := strings.Split(name, ".")
-	if strings.IndexAny(name, "*[]{}") > 0 {
+	if strings.ContainsAny(name, "*[]{}"){
 		return idx.GetChildrenSpecial(nil, segnames)
 	} else {
 		var parentNodes, lastNode string
