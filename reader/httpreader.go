@@ -14,6 +14,11 @@ import (
 	"github.com/fayizk1/go-carbon/cache"
 )
 
+type PointsData struct {
+	Pts persister.Points `json:"points"`
+	Step int `json:"step""`
+}
+
 type HTTP struct {
 	cachequeryChan chan *cache.Query
 	persistor *persister.LevelStore
@@ -179,7 +184,7 @@ func serveQueryRange(w http.ResponseWriter, r *http.Request) {
 	}
 	pdata = append(pdata, cPoints...)
 	sort.Sort(pdata)
-	data, _ := json.Marshal(pdata)
+	data, _ := json.Marshal(PointsData{Pts : pdata, Step : step})
 	w.Write(data)
 	return
 }
