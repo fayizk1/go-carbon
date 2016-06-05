@@ -60,10 +60,8 @@ func (idx *LevelIndex) CreateIndex(name string) error {
 			if err = json.Unmarshal(rdata, &rmembers); err != nil {
 				return err
 			}
-			if len(rmembers) > 0 {
-				if !InSlice(segnames[i], sibilings) {
-					rmembers = append(rmembers, segnames[i])
-				}
+			if !InSlice(segnames[i], rmembers) {
+				rmembers = append(rmembers, segnames[i])
 			}
 			rval, _ := json.Marshal(rmembers)
 			err = idx.DB.Put([]byte("."), rval, nil)
@@ -105,6 +103,26 @@ func (idx *LevelIndex) CreateIndex(name string) error {
 func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]IndexType, error) {
 	var parent string
 	var AllChildren []IndexType
+	if len(unResolved) == 0 {
+		if len(resolved) == 0 {
+			return nil, errors.New("Empty resolved")
+		}
+		fullName := strings.Join(resolved, ".")
+		sdata, err := idx.DB.Get([]byte(fullName), nil)
+		if err != nil && err != leveldb.ErrNotFound {
+			logrus.Println(err)
+			return nil, err
+		} else if err == leveldb.ErrNotFound {
+			return  []IndexType{IndexType{Isleaf : true, FullName : fullName, LastNode : resolved[len(resolved)-1]},}, nil
+		}
+		var tsibilings []string
+		if err = json.Unmarshal(sdata, &tsibilings); err != nil || len(tsibilings) == 0{
+			return []IndexType{IndexType{Isleaf : true, FullName : fullName, LastNode : resolved[len(resolved)-1]},}, nil
+		}
+		return []IndexType{IndexType{Isleaf : false, FullName : fullName, LastNode : resolved[len(resolved)-1]}, }, nil 
+	}
+	
+
 	if len(resolved) == 0 {
 		parent = "."
 	} else {
@@ -117,31 +135,6 @@ func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]Inde
 	var sibilings []string
 	if err = json.Unmarshal(data, &sibilings); err != nil {
 		return nil, err
-	}
-	if len(unResolved) == 0 {
-		var fullName string
-		for i := range sibilings {
-			if parent == "." {
-				fullName = sibilings[i]
-			} else {
-				fullName = parent + "." + sibilings[i]
-			}
-			sdata, err := idx.DB.Get([]byte(fullName), nil)
-			if err != nil && err != leveldb.ErrNotFound {
-				logrus.Println(err)
-				continue
-			} else if err == leveldb.ErrNotFound {
-				AllChildren = append(AllChildren, IndexType{Isleaf : true, FullName : fullName, LastNode : sibilings[i]})
-				continue
-			}
-			var tsibilings []string
-			if err = json.Unmarshal(sdata, &tsibilings); err != nil || len(tsibilings) == 0{
-				AllChildren = append(AllChildren, IndexType{Isleaf : true, FullName : fullName, LastNode : sibilings[i]})
-				continue
-			}
-			AllChildren = append(AllChildren, IndexType{Isleaf : false, FullName : fullName, LastNode : sibilings[i]})
-		}
-		return AllChildren, nil
 	}
 	if len(unResolved[0]) == 0 {
 		return nil , errors.New("Empty pattern")
@@ -158,7 +151,7 @@ func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]Inde
 			continue
 		}
 		rkey :=  make([]string, len(resolved))
-		urkey := make([]string, len(resolved) - 1)
+		urkey := make([]string, len(unResolved) - 1)
 		copy(rkey, resolved)
 		rkey = append(rkey, sibilings[i])
 		copy(urkey, unResolved[1:])
@@ -205,7 +198,6 @@ func (idx *LevelIndex) GetChildren(name string) ([]IndexType, error) {
 		for k := range validSiblings {
 			fullName := ""
 			if parentNodes == "." {
-				parentNodes = ""
 				fullName = validSiblings[k]
 			} else {
 				fullName = parentNodes + "." + validSiblings[k]
