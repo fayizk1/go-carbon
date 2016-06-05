@@ -15,7 +15,7 @@ import (
 const INDEX_CACHE_SIZE = 40 << 20
 
 type IndexType struct {
-	Isleaf bool `json:"isbool"`
+	Isleaf bool `json:"isleaf"`
 	FullName string `json:"fullname"`
 	LastNode string `json:"lastnode"`
 }
@@ -105,13 +105,13 @@ func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]Inde
 	var AllChildren []IndexType
 	if len(unResolved) == 0 {
 		if len(resolved) == 0 {
-			return nil, errors.New("Empty resolved")
+			return []IndexType{}, errors.New("Empty resolved")
 		}
 		fullName := strings.Join(resolved, ".")
 		sdata, err := idx.DB.Get([]byte(fullName), nil)
 		if err != nil && err != leveldb.ErrNotFound {
 			logrus.Println(err)
-			return nil, err
+			return []IndexType{}, err
 		} else if err == leveldb.ErrNotFound {
 			return  []IndexType{IndexType{Isleaf : true, FullName : fullName, LastNode : resolved[len(resolved)-1]},}, nil
 		}
@@ -121,8 +121,6 @@ func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]Inde
 		}
 		return []IndexType{IndexType{Isleaf : false, FullName : fullName, LastNode : resolved[len(resolved)-1]}, }, nil 
 	}
-	
-
 	if len(resolved) == 0 {
 		parent = "."
 	} else {
@@ -130,14 +128,14 @@ func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]Inde
 	}
 	data, err := idx.DB.Get([]byte(parent), nil)
 	if err != nil {
-		return nil, err
+		return []IndexType{}, err
 	}
 	var sibilings []string
 	if err = json.Unmarshal(data, &sibilings); err != nil {
-		return nil, err
+		return []IndexType{}, err
 	}
 	if len(unResolved[0]) == 0 {
-		return nil , errors.New("Empty pattern")
+		return []IndexType{}, errors.New("Empty pattern")
 	}
 	pattern := unResolved[0]
 	if len(unResolved) == 1 {
@@ -184,10 +182,10 @@ func (idx *LevelIndex) GetChildren(name string) ([]IndexType, error) {
 		}
 		data, err := idx.DB.Get([]byte(parentNodes), nil)
 		if err != nil {
-			return nil, err
+			return []IndexType{}, err
 		}
 		if err = json.Unmarshal(data, &sibilings); err != nil {
-			return nil, err
+			return []IndexType{}, err
 		}
 		var validSiblings []string
 		for j := range sibilings {
@@ -204,7 +202,7 @@ func (idx *LevelIndex) GetChildren(name string) ([]IndexType, error) {
 			}
 			data, err := idx.DB.Get([]byte(fullName), nil)
 			if err != nil && err != leveldb.ErrNotFound {
-				return nil, err
+				return []IndexType{}, err
 			} else if err == leveldb.ErrNotFound {
 				AllChildren = append(AllChildren, IndexType{Isleaf : true, FullName : fullName, LastNode : validSiblings[k]})
 				continue
