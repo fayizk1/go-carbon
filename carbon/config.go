@@ -94,6 +94,12 @@ type pprofConfig struct {
 	Enabled bool   `toml:"enabled"`
 }
 
+type replicationConfig struct {
+	Server  string `toml:"server"`
+	Peerlist []string `toml:"peerlist"`
+	PasswordHash string   `toml:"passwordhash"`
+}
+
 // Config ...
 type Config struct {
 	Common     commonConfig     `toml:"common"`
@@ -105,6 +111,7 @@ type Config struct {
 	Carbonlink carbonlinkConfig `toml:"carbonlink"`
 	HTTPReader httpreaderConfig `toml:"httpreader"`
 	Pprof      pprofConfig      `toml:"pprof"`
+	Replication    replicationConfig `toml:"replication"`
 }
 
 // NewConfig ...
@@ -163,6 +170,11 @@ func NewConfig() *Config {
 		Pprof: pprofConfig{
 			Listen:  "localhost:7007",
 			Enabled: false,
+		},
+		Replication: replicationConfig{
+			Server  :":9144",
+			Peerlist : []string{},
+			PasswordHash : "",
 		},
 	}
 

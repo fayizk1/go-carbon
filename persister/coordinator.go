@@ -7,9 +7,11 @@ import (
 	"sync/atomic"
 	"time"
 	"path"
+	"encoding/json"
 	"github.com/Sirupsen/logrus"
 	"github.com/fayizk1/go-carbon/helper"
 	"github.com/fayizk1/go-carbon/points"
+	"github.com/fayizk1/go-carbon/persister/replication"
 )
 
 type LevelStore struct {
@@ -32,6 +34,8 @@ type LevelStore struct {
 	Map                 *LevelMap
 	archives            *Archives
 	index               *LevelIndex
+	rplog               *replication.LevelReplicationLog
+	rthread             *replication.LevelReplicationThread
 }
 
 type Archives struct {
@@ -61,10 +65,12 @@ func (ars *Archives) Get(pos int) *Archive{
 	return ar
 }
 
-func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in chan *points.Points, confirm chan *points.Points) *LevelStore {
+func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in chan *points.Points, confirm chan *points.Points, peerlist []string, rserver string, rpasswordHash string) *LevelStore {
 	Map := NewMap(rootPath)
 	archives := NewArchives(rootPath, Map)
 	index := NewIndex(rootPath)
+	rplog := replication.NewReplicationLog(rootPath)
+	rthread := replication.NewReplicationThread(rplog , peerlist,  rserver, rpasswordHash, in)
 	return &LevelStore{
 		in:                  in,
 		confirm:             confirm,
@@ -77,6 +83,8 @@ func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *Whispe
 		Map:                 Map,
 		archives:            archives,
 		index:               index,
+		rplog :              rplog,
+		rthread:           rthread,
 	}
 }
 
@@ -164,12 +172,22 @@ func store(p *LevelStore, values *points.Points) {
 		logrus.Errorf("[persister] Unable to parse retention for %s", values.Metric)
 		return
 	}
+	logData, _ := json.Marshal(values)
+	logpos, err := p.rplog.WriteLog(logData)
+	if err != nil {
+		logrus.Errorf("[persister] Unable to write log-  %v", err)
+		return
+	}
 	for i, r := range retentions {
 		ar := p.archives.Get(i)
 		err = ar.Store(shortKey, values, int64(r.SecondsPerPoint()) , time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint()), string(aggM))
 		if err != nil {
 			logrus.Errorf("[persister] Unable to write into %s - Archive %d", values.Metric, i)
 		}
+	}
+	err = p.Map.PutLogPosition(logpos)
+	if err != nil {
+		logrus.Errorf("[persister] Error while writing log posistion  %v", err)
 	}
 	atomic.AddUint32(&p.commitedPoints, uint32(len(values.Data)))
 	atomic.AddUint32(&p.updateOperations, 1)
@@ -329,7 +347,7 @@ func throttleChan(in chan *points.Points, ratePerSec int, exit chan bool) chan *
 func (p *LevelStore) Start() error {
 
 	return p.StartFunc(func() error {
-
+		p.rthread.Start()
 		p.Go(func(exitChan chan bool) {
 			p.statWorker(exitChan)
 		})

@@ -227,6 +227,9 @@ func (app *App) startPersister() {
 			app.Config.Whisper.Aggregation,
 			app.Cache.Out(),
 			app.Cache.Confirm(),
+			app.Config.Replication.Peerlist,
+			app.Config.Replication.Server,
+			app.Config.Replication.PasswordHash,
 		)
 		p.SetGraphPrefix(app.Config.Common.GraphPrefix)
 		p.SetMetricInterval(app.Config.Common.MetricInterval.Value())

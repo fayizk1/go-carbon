@@ -3,6 +3,7 @@ package persister
 import (
 	"path"
 	"errors"
+	"strconv"
 	leveldb_filter "github.com/syndtr/goleveldb/leveldb/filter"
 	leveldb_opt "github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -73,6 +74,21 @@ func (mp *LevelMap) GetSchema(mapKey []byte) ([]byte, error) {
 func (mp *LevelMap) PutSchema(mapKey, method []byte) (error) {
 	k := append([]byte("schema:"), mapKey...)
 	return mp.DB.Put(k, method, nil)
+}
+
+func (mp *LevelMap) PutLogPosition(count uint64) (error) {
+	k := []byte("writelogpos")
+	v := []byte(strconv.FormatUint(count, 10))
+	return mp.DB.Put(k, v, nil)
+}
+
+func (mp *LevelMap) GetLogPosition() (uint64, error) {
+	val , err := mp.DB.Get([]byte("writelogpos"), nil)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseUint(string(val), 10, 64)
+	
 }
 
 func (mp *LevelMap) Close() {

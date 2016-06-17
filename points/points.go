@@ -14,14 +14,14 @@ import (
 
 // Point value/time pair
 type Point struct {
-	Value     float64
-	Timestamp int64
+	Value     float64 `json:"value"`
+	Timestamp int64   `json:"timestamp"`
 }
 
 // Points from carbon clients
 type Points struct {
-	Metric string
-	Data   []*Point
+	Metric string `json:"metric"`
+	Data   []*Point `json:"data"`
 }
 
 // New creates new instance of Points

@@ -127,6 +127,8 @@ func (ar *Archive) Store(key []byte, data *points.Points, sec ,exptime int64, ag
 			} else {
 				finalData[tpoint] = v.Value
 			}
+		case "last":
+			finalData[tpoint] = v.Value
 		}
 	}
 	storelist := make(map[string]*leveldb.Batch)
