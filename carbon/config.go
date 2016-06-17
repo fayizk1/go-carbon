@@ -98,6 +98,7 @@ type replicationConfig struct {
 	Server  string `toml:"server"`
 	Peerlist []string `toml:"peerlist"`
 	PasswordHash string   `toml:"passwordhash"`
+	Logpath string `toml:"logpath"`
 }
 
 // Config ...
@@ -175,6 +176,7 @@ func NewConfig() *Config {
 			Server  :":9144",
 			Peerlist : []string{},
 			PasswordHash : "",
+			Logpath : "/var/lib/"
 		},
 	}
 

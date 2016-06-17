@@ -65,11 +65,12 @@ func (ars *Archives) Get(pos int) *Archive{
 	return ar
 }
 
-func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in chan *points.Points, confirm chan *points.Points, peerlist []string, rserver string, rpasswordHash string) *LevelStore {
+func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in chan *points.Points,
+	confirm chan *points.Points, peerlist []string, rserver string, rpasswordHash string, Logpath string) *LevelStore {
 	Map := NewMap(rootPath)
 	archives := NewArchives(rootPath, Map)
 	index := NewIndex(rootPath)
-	rplog := replication.NewReplicationLog(rootPath)
+	rplog := replication.NewReplicationLog(Logpath)
 	rthread := replication.NewReplicationThread(rplog , peerlist,  rserver, rpasswordHash, in)
 	return &LevelStore{
 		in:                  in,
