@@ -18,8 +18,9 @@ type LevelStore struct {
 	helper.Stoppable
 	updateOperations    uint32
 	commitedPoints      uint32
-	in                  chan *points.Points
+ 	in                  chan *points.Points
 	confirm             chan *points.Points
+	rplIn                  chan *points.Points
 	schemas             *WhisperSchemas
 	aggregation         *WhisperAggregation
 	metricInterval      time.Duration // checkpoint interval
@@ -29,7 +30,7 @@ type LevelStore struct {
 	created             uint32 // counter
 	sparse              bool
 	maxUpdatesPerSecond int
-	mockStore           func(p *LevelStore, values *points.Points)
+	mockStore           func(p *LevelStore, values *points.Points, replication bool)
 	shards              map[string]Shard
 	Map                 *LevelMap
 	archives            *Archives
@@ -71,7 +72,8 @@ func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *Whispe
 	archives := NewArchives(rootPath, Map)
 	index := NewIndex(rootPath)
 	rplog := replication.NewReplicationLog(Logpath)
-	rthread := replication.NewReplicationThread(rplog , peerlist,  rserver, rpasswordHash, in)
+	rplIn := make(chan *points.Points)
+	rthread := replication.NewReplicationThread(rplog , peerlist,  rserver, rpasswordHash, rplIn)
 	return &LevelStore{
 		in:                  in,
 		confirm:             confirm,
@@ -86,6 +88,7 @@ func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *Whispe
 		index:               index,
 		rplog :              rplog,
 		rthread:           rthread,
+		rplIn:             rplIn,
 	}
 }
 
@@ -128,7 +131,7 @@ func (p *LevelStore) Stat(metric string, value float64) {
 	)
 }
 
-func store(p *LevelStore, values *points.Points) {
+func store(p *LevelStore, values *points.Points, replication bool) {
 	shortKey, err := p.Map.GetShortKey(values.Metric, true)
 	if err != nil {
 		logrus.Errorf("[persister] unable to get short key for %s", values.Metric)
@@ -173,11 +176,13 @@ func store(p *LevelStore, values *points.Points) {
 		logrus.Errorf("[persister] Unable to parse retention for %s", values.Metric)
 		return
 	}
-	logData, _ := json.Marshal(values)
-	_, err = p.rplog.WriteLog(logData)
-	if err != nil {
-		logrus.Errorf("[persister] Unable to write log-  %v", err)
-		return
+	if !replication {
+		logData, _ := json.Marshal(values)
+		_, err = p.rplog.WriteLog(logData)
+		if err != nil {
+			logrus.Errorf("[persister] Unable to write log-  %v", err)
+			return
+		}
 	}
 	for i, r := range retentions {
 		ar := p.archives.Get(i)
@@ -206,11 +211,16 @@ LOOP:
 		select {
 		case <-exit:
 			break LOOP
+		case values, ok := <-p.rplIn:
+			if !ok {
+				break LOOP
+			}
+			storeFunc(p, values, true)
 		case values, ok := <-in:
 			if !ok {
 				break LOOP
 			}
-			storeFunc(p, values)
+			storeFunc(p, values, false)
 		}
 	}
 }
