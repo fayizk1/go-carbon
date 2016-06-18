@@ -44,7 +44,13 @@ func (rt *LevelReplicationThread) startReader(addr string) {
 	go func() { //Reader position
 		for {
 			time.Sleep(10 * time.Second)
-			rt.rlog.SetReaderPos([]byte(addr), <-readerPos)
+			readerPos := <-readerPos
+			err := rt.rlog.SetReaderPos([]byte(addr), readerPos)
+			if err != nil {
+				log.Println("Unable to write reader pos", err)
+				continue
+			}
+			log.Println("Written ",addr, " reader log at ", readerPos )
 		}
 	}()
 connect_expr:
@@ -251,7 +257,32 @@ mainloop:
 			if err != nil {
 				log.Println("Unable send packet to client, closining", err)
 				return
-			}			
+			}
+		case "READERSTATUS":
+			if len(pktSlice) < 2 {
+				_, err := conn.Write([]byte("Not enough args \n"))
+				if err != nil {
+					log.Println("Unable to write into admin mode, closing", err)
+					return
+				}
+				continue mainloop
+			}
+			readerPos, err := rt.rlog.GetReaderPos([]byte(strings.TrimSpace(pktSlice[1])))
+			if err != nil {
+				log.Println("Error while read", err)
+				_, err := conn.Write([]byte("Unable to read pos \n"))
+				if err != nil {
+					log.Println("Unable to write into admin mode, closing", err)
+					return
+				}
+				continue mainloop
+			}
+			_, err = conn.Write([]byte(fmt.Sprintf("Slave Position: %d \n", readerPos)))
+			if err != nil {
+				log.Println("Unable to write into admin mode, closing", err)
+				return
+			}
+
 		default:
 			_, err := conn.Write(append([]byte("ERRUNKN"), '\x01', '_', '\n'))
 			if err != nil {
