@@ -163,10 +163,10 @@ mainloop:
 				}
 			}
 			rPos, err := strconv.ParseUint(strings.TrimSpace(pktSlice[1]), 10, 64)
-			_, err = conn.Write(append([]byte("ERRUNKNWNQRY"), '\x01', '_', '\n'))
 			if err != nil {
+				_, err = conn.Write(append([]byte("ERRUNKNWNQRY"), '\x01', '_', '\n'))
 				log.Println("Unable send packet to client, closining", err)
-				return
+				continue mainloop
 			}
 			cPos := rt.rlog.Counter
 			if rPos > cPos {
