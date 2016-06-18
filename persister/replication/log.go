@@ -17,7 +17,6 @@ import (
 
 const LOG_CACHE_SIZE = 40 << 20
 const DATE_LAYOUT = "20060102"
-const MAX_UINT64 = 18446744073709551615
 
 type LevelReplicationLog struct {
 	sync.Mutex
@@ -64,24 +63,22 @@ func (rl *LevelReplicationLog) GetLog(pos uint64) ([]byte, error) {
 	return rl.DB.Get(key, nil)
 }
 
-func (rl *LevelReplicationLog) GetLogFirstAvailable(pos uint64) (uint64, []byte, error) {	
+func (rl *LevelReplicationLog) GetLogFirstAvailable(pos uint64) (uint64, []byte, error) {
+	timeout := 100
+start:
+	if timeout == 0 {
+		return 0, nil, errors.New("Log Position timeout")
+	}
+	timeout--
 	key := append([]byte("log:"), []byte(strconv.FormatUint(pos, 10))...)
-	iter := rl.DB.NewIterator(&util.Range{Start: key}, nil)
-	if !iter.First() {
-		return 0, nil, errors.New("Log Position error1")
+	v, err := rl.DB.Get(key, nil)
+	if err == leveldb.ErrNotFound {
+		pos++
+		goto start
+	} else if err != nil {
+		return 0, nil, err
 	}
-	if !bytes.HasPrefix(iter.Key(), []byte("log:")) {
-		return 0, nil, errors.New("Log Position error1")
-	}
-	keySlice := bytes.Split(iter.Key(), []byte(":"))
-	if len(keySlice) != 2 {
-		return 0, nil, errors.New("Log Position error2")
-	}
-	pos, err := strconv.ParseUint(string(keySlice[1]), 10, 64)
-	if err != nil {
-		return 0, nil, errors.New("Log Position error3")
-	}
-	return pos, iter.Value(), nil
+	return pos, v, nil
 }
 
 func (rl *LevelReplicationLog) PurgeLogs(sPos uint64, ePos uint64) (error) {
@@ -99,14 +96,26 @@ func (rl *LevelReplicationLog) PurgeLogs(sPos uint64, ePos uint64) (error) {
 
 func (rl *LevelReplicationLog) GetCurrentPos() (uint64, error) {
 	skey := append([]byte("log:"), []byte(strconv.FormatUint(0, 10))...)
-	ekey := append([]byte("log:"), []byte(strconv.FormatUint(MAX_UINT64, 10))...)
-	iter := rl.DB.NewIterator(&util.Range{Start: skey, Limit: ekey}, nil)
-	if !iter.Last() {
-		log.Println("No Key found, starting from start")
-		return 0, nil
+	iter := rl.DB.NewIterator(&util.Range{Start: skey}, nil)
+	var lastpos uint64 = 0
+	for iter.Next() {
+		if !bytes.HasPrefix(iter.Key(), []byte("log:")) {
+			break
+		}
+		spltData := bytes.Split(iter.Key(), []byte(":"))
+		if len(spltData) < 2 {
+			continue
+		}
+		sp, err := strconv.ParseUint(string(spltData[1]), 10, 64)
+		if err != nil {
+			log.Println("Error while looking key, skipping", err)
+			continue
+		}
+		if sp > lastpos {
+			lastpos = sp
+		}
 	}
-	spltData := bytes.Split(iter.Key(), []byte(":"))
-	return strconv.ParseUint(string(spltData[1]), 10, 64)
+	return lastpos, nil
 }
 
 func (rl *LevelReplicationLog) SetDatePos(date []byte, pos uint64) (error) {
@@ -153,12 +162,8 @@ mainloop:
 	for {
 		select {
 		case <-commitUpdateTicker.C:
-			pos, err := rp.GetCurrentPos()
-			if err != nil {
-				log.Println("Replication: Error, ", err)
-				continue mainloop
-			}
-			err = rp.SetDatePos([]byte(time.Now().Format(DATE_LAYOUT)), pos)
+			pos := rp.Counter
+			err := rp.SetDatePos([]byte(time.Now().Format(DATE_LAYOUT)), pos)
 			if err != nil {
 				log.Println("Replication: Error while setting date pos", err)
 			}
