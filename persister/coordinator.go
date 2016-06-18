@@ -174,7 +174,7 @@ func store(p *LevelStore, values *points.Points) {
 		return
 	}
 	logData, _ := json.Marshal(values)
-	logpos, err := p.rplog.WriteLog(logData)
+	_, err = p.rplog.WriteLog(logData)
 	if err != nil {
 		logrus.Errorf("[persister] Unable to write log-  %v", err)
 		return
@@ -185,10 +185,6 @@ func store(p *LevelStore, values *points.Points) {
 		if err != nil {
 			logrus.Errorf("[persister] Unable to write into %s - Archive %d", values.Metric, i)
 		}
-	}
-	err = p.Map.PutLogPosition(logpos)
-	if err != nil {
-		logrus.Errorf("[persister] Error while writing log posistion  %v", err)
 	}
 	atomic.AddUint32(&p.commitedPoints, uint32(len(values.Data)))
 	atomic.AddUint32(&p.updateOperations, 1)

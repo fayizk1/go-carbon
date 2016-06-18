@@ -230,7 +230,7 @@ func (app *App) startPersister() {
 			app.Config.Replication.Peerlist,
 			app.Config.Replication.Server,
 			app.Config.Replication.PasswordHash,
-			app.Config.Replication.Locgpath
+			app.Config.Replication.Logpath,
 		)
 		p.SetGraphPrefix(app.Config.Common.GraphPrefix)
 		p.SetMetricInterval(app.Config.Common.MetricInterval.Value())

@@ -176,7 +176,7 @@ func NewConfig() *Config {
 			Server  :":9144",
 			Peerlist : []string{},
 			PasswordHash : "",
-			Logpath : "/var/lib/"
+			Logpath : "/var/lib/",
 		},
 	}
 

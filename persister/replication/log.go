@@ -17,6 +17,7 @@ import (
 
 const LOG_CACHE_SIZE = 40 << 20
 const DATE_LAYOUT = "20060102"
+const MAX_UINT64 = 18446744073709551615
 
 type LevelReplicationLog struct {
 	sync.Mutex
@@ -46,26 +47,13 @@ func NewReplicationLog(basepath string) (*LevelReplicationLog) {
 }
 
 func (rl *LevelReplicationLog) WriteLog(val []byte) (uint64, error) {
-	tr, err := rl.DB.OpenTransaction()
-	if err != nil {
-		return 0, err
-	}
 	rl.Lock()
 	defer rl.Unlock()
-	batch := new(leveldb.Batch)
 	counter := []byte(strconv.FormatUint(rl.Counter +  1, 10))
 	key := append([]byte("log:"), counter...)
-	batch.Put(key, val)
-	key = []byte("lastlogpos")
-	batch.Put(key, counter)
-	err = tr.Write(batch, nil)
+	err := rl.DB.Put(key, val, nil)
 	if err != nil {
-		tr.Discard()
 		return 0 ,err
-	}
-	err = tr.Commit()
-	if err != nil {
-		return rl.Counter, err
 	}
 	count := atomic.AddUint64(&rl.Counter, 1)
 	return count, err
@@ -79,7 +67,9 @@ func (rl *LevelReplicationLog) GetLog(pos uint64) ([]byte, error) {
 func (rl *LevelReplicationLog) GetLogFirstAvailable(pos uint64) (uint64, []byte, error) {	
 	key := append([]byte("log:"), []byte(strconv.FormatUint(pos, 10))...)
 	iter := rl.DB.NewIterator(&util.Range{Start: key}, nil)
-	iter.Next()
+	if !iter.First() {
+		return 0, nil, errors.New("Log Position error1")
+	}
 	if !bytes.HasPrefix(iter.Key(), []byte("log:")) {
 		return 0, nil, errors.New("Log Position error1")
 	}
@@ -108,14 +98,14 @@ func (rl *LevelReplicationLog) PurgeLogs(sPos uint64, ePos uint64) (error) {
 }
 
 func (rl *LevelReplicationLog) GetCurrentPos() (uint64, error) {
-	key := []byte("lastlogpos")
-	rawdata, err :=  rl.DB.Get(key, nil)
-	if err == leveldb.ErrNotFound {
-		return 0, nil
-	} else if err != nil {
-		return 0, err
+	skey := append([]byte("log:"), []byte(strconv.FormatUint(0, 10))...)
+	ekey := append([]byte("log:"), []byte(strconv.FormatUint(MAX_UINT64, 10))...)
+	iter := rl.DB.NewIterator(&util.Range{Start: skey, Limit: ekey}, nil)
+	if !iter.Last() {
+		return 0, errors.New("No log Key found")
 	}
-	return strconv.ParseUint(string(rawdata), 10, 64)
+	spltData := bytes.Split(iter.Key(), []byte(":"))
+	return strconv.ParseUint(string(spltData[1]), 10, 64)
 }
 
 func (rl *LevelReplicationLog) SetDatePos(date []byte, pos uint64) (error) {
