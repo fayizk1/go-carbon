@@ -153,19 +153,24 @@ mainloop:
 			return
 		}
 		pktSlice := strings.Split(pkt, " ")
-		switch pktSlice[0] {
+		switch strings.TrimSpace(pktSlice[0]) {
 		case "GETLOG":
 			if len(pktSlice) != 2 {
-				_, err := conn.Write(append([]byte("ERRCONN"), '\x01', 't', '\n'))
+				_, err := conn.Write(append([]byte("ERRCONN"), '\x01', '_', '\n'))
 				if err != nil {
 					log.Println("Unable send packet to client, closing", err)
 					return
 				}
 			}
-			rPos, err := strconv.ParseUint(pktSlice[1], 10, 64)
-			cPos, err := rt.rlog.GetCurrentPos()
+			rPos, err := strconv.ParseUint(strings.TrimSpace(pktSlice[1]), 10, 64)
+			_, err = conn.Write(append([]byte("ERRUNKNWNQRY"), '\x01', '_', '\n'))
+			if err != nil {
+				log.Println("Unable send packet to client, closining", err)
+				return
+			}
+			cPos := rt.rlog.Counter
 			if rPos > cPos {
-				_, err := conn.Write(append([]byte("ERRLAST"), '\x01', 't', '\n'))
+				_, err := conn.Write(append([]byte("ERRLAST"), '\x01', '_', '\n'))
 				if err != nil {
 					log.Println("Unable send packet to client, closining", err)
 					return
@@ -173,7 +178,7 @@ mainloop:
 			}
 			pos, val, err :=  rt.rlog.GetLogFirstAvailable(rPos)
 			if err != nil {
-				_, err := conn.Write(append([]byte("ERRREAD"), '\x01', 't', '\n'))
+				_, err := conn.Write(append([]byte("ERRREAD"), '\x01', '_', '\n'))
 				if err != nil {
 					log.Println("Unable send packet to client, closining", err)
 					return
@@ -248,7 +253,7 @@ mainloop:
 				return
 			}			
 		default:
-			_, err := conn.Write(append([]byte("ERRUNKN"), '\x01', 't'))
+			_, err := conn.Write(append([]byte("ERRUNKN"), '\x01', '_', '\n'))
 			if err != nil {
 				log.Println("Unable send packet to client, closining", err)
 				return
