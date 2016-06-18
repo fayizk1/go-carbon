@@ -42,15 +42,22 @@ func (rt *LevelReplicationThread) startReader(addr string) {
 	log.Printf("Starting read slave %s at %d", addr, pos)
 	readerPos := make(chan uint64)
 	go func() { //Reader position
+		log.Println("starting pos logger for ", addr)
+		var statusPos uint64 = 0
+		tick:= time.NewTicker(10 * time.Second)
 		for {
-			time.Sleep(10 * time.Second)
-			readerPos := <-readerPos
-			err := rt.rlog.SetReaderPos([]byte(addr), readerPos)
-			if err != nil {
-				log.Println("Unable to write reader pos", err)
-				continue
+			select {
+			case <-tick.C:
+				err := rt.rlog.SetReaderPos([]byte(addr), statusPos)
+				if err != nil {
+					log.Println("Unable to write reader pos", err)
+					break
+				}
+				log.Println("Written ",addr, " reader log at ", statusPos )
+			case statusPos = <-readerPos:
+				
 			}
-			log.Println("Written ",addr, " reader log at ", readerPos )
+
 		}
 	}()
 connect_expr:
