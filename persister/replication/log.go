@@ -102,7 +102,8 @@ func (rl *LevelReplicationLog) GetCurrentPos() (uint64, error) {
 	ekey := append([]byte("log:"), []byte(strconv.FormatUint(MAX_UINT64, 10))...)
 	iter := rl.DB.NewIterator(&util.Range{Start: skey, Limit: ekey}, nil)
 	if !iter.Last() {
-		return 0, errors.New("No log Key found")
+		log.Println("No Key found, starting from start")
+		return 0, nil
 	}
 	spltData := bytes.Split(iter.Key(), []byte(":"))
 	return strconv.ParseUint(string(spltData[1]), 10, 64)
