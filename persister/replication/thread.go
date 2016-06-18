@@ -97,7 +97,7 @@ connect_expr:
 			log.Println("Droping Unknown message", string(message))
 			continue
 		}
-		var pts *points.Points
+		var pts *points.Points = &points.Points{}
 		err = json.Unmarshal(bytes.TrimSpace(messageSlice[1]), pts)
 		if err != nil {
 			log.Println("Unable to parse packet, droping", string(message), err)
