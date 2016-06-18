@@ -117,6 +117,7 @@ connect_expr:
 			continue
 		}
 		rt.out <- pts
+		sPos++
 		pos = sPos
 		select {
 		case readerPos <- pos:
