@@ -133,7 +133,7 @@ func (rl *LevelReplicationLog) SetReaderPos(reader []byte, pos uint64) (error) {
 func (rl *LevelReplicationLog) GetReaderPos(reader []byte) (uint64, error) {
 	key := append([]byte("reader:"), reader...)
 	rawdata, err :=  rl.DB.Get(key, nil)
-	if err != leveldb.ErrNotFound {
+	if err == leveldb.ErrNotFound {
 		return 0, nil
 	} else if err != nil {
 		return 0, err
