@@ -40,6 +40,13 @@ func (rt *LevelReplicationThread) startReader(addr string) {
 		panic(err)
 	}
 	log.Printf("Starting read slave %s at %d", addr, pos)
+	readerPos := make(chan uint64)
+	go func() { //Reader position
+		for {
+			time.Sleep(10 * time.Second)
+			rt.rlog.SetReaderPos([]byte(addr), <-readerPos)
+		}
+	}()
 connect_expr:
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -62,6 +69,10 @@ connect_expr:
 		if err != nil {
 			log.Println("[replication] client write failed, ", err, ", reconnecting")
 			conn.Close()
+			goto connect_expr
+		}
+		if err := conn.SetReadDeadline(time.Now().Add(20 * time.Second)); err != nil {
+			log.Println("Unable to set client read timout, restarting", err)
 			goto connect_expr
 		}
 		message, err := reader.ReadBytes('\n')
@@ -94,6 +105,10 @@ connect_expr:
 		}
 		rt.out <- pts
 		pos = sPos
+		select {
+		case readerPos <- pos:
+		default:
+		}
 	}
 }
 
