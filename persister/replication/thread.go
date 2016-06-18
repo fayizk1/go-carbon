@@ -40,22 +40,18 @@ func (rt *LevelReplicationThread) startReader(addr string) {
 		panic(err)
 	}
 	log.Printf("Starting read slave %s at %d", addr, pos)
-	readerPos := make(chan uint64)
 	go func() { //Reader position
 		log.Println("starting pos logger for ", addr)
-		var statusPos uint64 = 0
-		tick:= time.NewTicker(10 * time.Second)
+		tick:= time.NewTicker(100 * time.Millisecond)
 		for {
 			select {
 			case <-tick.C:
-				err := rt.rlog.SetReaderPos([]byte(addr), statusPos)
+				err := rt.rlog.SetReaderPos([]byte(addr), pos)
 				if err != nil {
 					log.Println("Unable to write reader pos", err)
 					break
 				}
-				log.Println("Written ",addr, " reader log at ", statusPos )
-			case statusPos = <-readerPos:
-				
+				log.Println("Written ",addr, " reader log at ", pos )
 			}
 
 		}
@@ -119,10 +115,6 @@ connect_expr:
 		rt.out <- pts
 		sPos++
 		pos = sPos
-		select {
-		case readerPos <- pos:
-		default:
-		}
 	}
 }
 
