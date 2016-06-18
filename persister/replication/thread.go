@@ -129,9 +129,9 @@ func handleConnection(rt *LevelReplicationThread, conn net.Conn) {
 	bufReader := bufio.NewReader(conn)
 	admin := false
 	_ = admin
-	conn.SetReadDeadline(time.Now().Add(20 * time.Second))
 mainloop:
 	for {
+		conn.SetReadDeadline(time.Now().Add(20 * time.Second))
 		pkt, err := bufReader.ReadString('\n')
 		if err != nil {
 			log.Println(err)
