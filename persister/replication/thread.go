@@ -189,16 +189,20 @@ mainloop:
 		switch strings.TrimSpace(pktSlice[0]) {
 		case "GETLOG":
 			if len(pktSlice) != 2 {
-				_, err := conn.Write(append([]byte("ERRCONN"), '\x01', '_', '\n'))
+				_, err := conn.Write(append([]byte("ERRCOMM"), '\x01', '_', '\n'))
 				if err != nil {
 					log.Println("Unable send packet to client, closing", err)
 					return
 				}
+				continue mainloop
 			}
 			rPos, err := strconv.ParseUint(strings.TrimSpace(pktSlice[1]), 10, 64)
 			if err != nil {
 				_, err = conn.Write(append([]byte("ERRUNKNWNQRY"), '\x01', '_', '\n'))
-				log.Println("Unable send packet to client, closining", err)
+				if err != nil {
+					log.Println("Unable send packet to client, closing", err)
+					return
+				}
 				continue mainloop
 			}
 			cPos := rt.rlog.Counter
@@ -208,6 +212,7 @@ mainloop:
 					log.Println("Unable send packet to client, closining", err)
 					return
 				}
+				continue mainloop
 			}
 			val, err :=  rt.rlog.GetLog(rPos)
 			if err != nil {
@@ -219,6 +224,7 @@ mainloop:
 					log.Println("Unable send packet to client, closining", err)
 					return
 				}
+				continue mainloop
 			}
 			data := append([]byte(strconv.FormatUint(rPos, 10)), '\x01')
 			data = append(data, val...)
@@ -280,7 +286,8 @@ mainloop:
 					if err != nil {
 						log.Println("Unable to write , closing", err)
 						return
-					}		
+					}
+					continue mainloop
 				}
 			}
 			_, err := conn.Write([]byte("started slave \n"))
@@ -314,7 +321,8 @@ mainloop:
 					if err != nil {
 						log.Println("Unable to write , closing", err)
 						return
-					}		
+					}
+					continue mainloop
 				}
 			}
 			_, err := conn.Write([]byte("stopped slave \n"))
