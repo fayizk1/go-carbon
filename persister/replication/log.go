@@ -18,6 +18,10 @@ import (
 const LOG_CACHE_SIZE = 40 << 20
 const DATE_LAYOUT = "20060102"
 
+var (
+	ErrLogReadTimeout = errors.New("Log Position timeout")
+)
+
 type LevelReplicationLog struct {
 	sync.Mutex
 	Path string
@@ -66,8 +70,8 @@ func (rl *LevelReplicationLog) GetLog(pos uint64) ([]byte, error) {
 func (rl *LevelReplicationLog) GetLogFirstAvailable(pos uint64) (uint64, []byte, error) {
 	timeout := 100
 start:
-	if timeout == 0 {
-		return 0, nil, errors.New("Log Position timeout")
+	if timeout <= 0 {
+		return 0, nil, ErrLogReadTimeout
 	}
 	timeout--
 	key := append([]byte("log:"), []byte(strconv.FormatUint(pos, 10))...)

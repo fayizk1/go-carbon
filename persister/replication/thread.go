@@ -95,6 +95,11 @@ connect_expr:
 			time.Sleep(10 * time.Second)
 			continue
 		}
+		if bytes.HasPrefix( message,[]byte("ERRTIMEOUT")) {
+			log.Println("Log read timeout, waiting 10 sec")
+			time.Sleep(10 * time.Second)
+			continue
+		}
 		pos++
 		messageSlice := bytes.Split(message, []byte("\x01"))
 		if len(messageSlice) != 2 {
@@ -183,7 +188,13 @@ mainloop:
 				}
 			}
 			pos, val, err :=  rt.rlog.GetLogFirstAvailable(rPos)
-			if err != nil {
+			if err == ErrLogReadTimeout {
+				_, err := conn.Write(append([]byte("ERRTIMEOUT"), '\x01', '_', '\n'))
+				if err != nil {
+					log.Println("Unable send packet to client, closining", err)
+					return
+				}
+			} else if err != nil {
 				_, err := conn.Write(append([]byte("ERRREAD"), '\x01', '_', '\n'))
 				if err != nil {
 					log.Println("Unable send packet to client, closining", err)
