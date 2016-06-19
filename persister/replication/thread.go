@@ -8,10 +8,17 @@ import (
 	"bytes"
 	"bufio"
 	"strconv"
+	"sync"
 	"strings"
 	"encoding/json"
 	"github.com/fayizk1/go-carbon/points"
 )
+
+type ReaderMeta struct {
+	position uint64
+	running bool
+	sync.RWMutex
+}
 
 type LevelReplicationThread struct {
 	rlog *LevelReplicationLog
@@ -19,15 +26,16 @@ type LevelReplicationThread struct {
 	server string
 	out chan *points.Points
 	AdminPasswordHash string
-	startSlave bool
+	Readers map[string]*ReaderMeta
 }
 
 func NewReplicationThread(rlog *LevelReplicationLog, PeerList []string, server string, passwordHash string, out chan *points.Points) (*LevelReplicationThread) {
-	return &LevelReplicationThread{rlog : rlog, PeerList: PeerList, out : out, server: server, AdminPasswordHash: passwordHash, startSlave: false}
+	return &LevelReplicationThread{rlog : rlog, PeerList: PeerList, out : out, server: server, AdminPasswordHash: passwordHash, Readers : make(map[string]*ReaderMeta)}
 }
 
 func (rt *LevelReplicationThread) Start() {
 	for i := range rt.PeerList {
+		rt.Readers[rt.PeerList[i]] = &ReaderMeta{running: false, position: 0}
 		go rt.startReader(rt.PeerList[i])
 	}
 	go rt.startWriter()
@@ -40,18 +48,21 @@ func (rt *LevelReplicationThread) startReader(addr string) {
 		panic(err)
 	}
 	log.Printf("Starting read slave %s at %d", addr, pos)
+	rt.Readers[addr].position = pos
 	go func() { //Reader position
 		log.Println("starting pos logger for ", addr)
 		tick:= time.NewTicker(100 * time.Millisecond)
 		for {
 			select {
 			case <-tick.C:
-				err := rt.rlog.SetReaderPos([]byte(addr), pos)
+				rt.Readers[addr].RLock()
+				position := rt.Readers[addr].position
+				rt.Readers[addr].RUnlock()
+				err := rt.rlog.SetReaderPos([]byte(addr), position)
 				if err != nil {
 					log.Println("Unable to write reader pos", err)
 					break
 				}
-				log.Println("Written ",addr, " reader log at ", pos )
 			}
 
 		}
@@ -68,12 +79,20 @@ connect_expr:
 		log.Println("Unable to set client read timout, restarting", err)
 		 goto connect_expr
 	}
+	var running bool
+	var position uint64
 	for {
-		if rt.startSlave == false {
+		rt.Readers[addr].RLock()
+		running = rt.Readers[addr].running
+		rt.Readers[addr].RUnlock()
+		if !running {
 			time.Sleep(10 * time.Second)
 			continue
 		}
-		queryCommand := fmt.Sprintf("GETLOG %d", pos)
+		rt.Readers[addr].RLock()
+		position = rt.Readers[addr].position
+		rt.Readers[addr].RUnlock()
+		queryCommand := fmt.Sprintf("GETLOG %d", position)
 		_, err := conn.Write([]byte(queryCommand + "\n"))
 		if err != nil {
 			log.Println("[replication] client write failed, ", err, ", reconnecting")
@@ -95,31 +114,34 @@ connect_expr:
 			time.Sleep(10 * time.Second)
 			continue
 		}
-		if bytes.HasPrefix( message,[]byte("ERRTIMEOUT")) {
-			log.Println("Log read timeout, waiting 10 sec")
-			time.Sleep(10 * time.Second)
-			continue
-		}
-		pos++
 		messageSlice := bytes.Split(message, []byte("\x01"))
 		if len(messageSlice) != 2 {
-			log.Println("Droping Unknown message", string(message))
+			log.Println("Unknown message", string(message), addr)
+			time.Sleep(1 * time.Second)
 			continue
 		}
 		sPos, err := strconv.ParseUint(string(messageSlice[0]), 10, 64)
 		if err != nil {
-			log.Println("Droping Unknown message", string(message))
+			log.Println("Unknown message", string(message), addr)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		if sPos != position {
+			log.Printf("[Replicatio] Unknown log postion recieved, old : %d, recieved : %d, server: %s", pos, sPos, addr)
+			time.Sleep(1 * time.Second)
 			continue
 		}
 		var pts *points.Points = &points.Points{}
 		err = json.Unmarshal(bytes.TrimSpace(messageSlice[1]), pts)
 		if err != nil {
-			log.Println("Unable to parse packet, droping", string(message), err)
+			log.Println("Unable to parse packet", string(message), err, addr)
+			time.Sleep(1 * time.Second)
 			continue
 		}
 		rt.out <- pts
-		sPos++
-		pos = sPos
+		rt.Readers[addr].Lock()
+		rt.Readers[addr].position++
+		rt.Readers[addr].Unlock()
 	}
 }
 
@@ -187,21 +209,18 @@ mainloop:
 					return
 				}
 			}
-			pos, val, err :=  rt.rlog.GetLogFirstAvailable(rPos)
-			if err == ErrLogReadTimeout {
-				_, err := conn.Write(append([]byte("ERRTIMEOUT"), '\x01', '_', '\n'))
-				if err != nil {
-					log.Println("Unable send packet to client, closining", err)
-					return
-				}
-			} else if err != nil {
-				_, err := conn.Write(append([]byte("ERRREAD"), '\x01', '_', '\n'))
+			val, err :=  rt.rlog.GetLog(rPos)
+			if err != nil {
+				errMsg := append([]byte("ERRREAD"), '\x01', '_')
+				errMsg = append(errMsg, []byte(err.Error())...)
+				errMsg = append(errMsg, '\n')
+				_, err := conn.Write(errMsg)
 				if err != nil {
 					log.Println("Unable send packet to client, closining", err)
 					return
 				}
 			}
-			data := append([]byte(strconv.FormatUint(pos, 10)), '\x01')
+			data := append([]byte(strconv.FormatUint(rPos, 10)), '\x01')
 			data = append(data, val...)
 			data = append(data, '\n')
 			_, err = conn.Write(data)
@@ -227,7 +246,7 @@ mainloop:
 				log.Println("Unable to write into admin mode, closing", err)
 				return
 			}						
-		case "STARTSLAVE":
+		case "STARTREADER":
 			if !admin  {
 				_, err := conn.Write([]byte("please login as admin mode \n"))
 				if err != nil {
@@ -236,13 +255,40 @@ mainloop:
 				}						
 				continue mainloop
 			}
-			rt.startSlave = true
+			if len(pktSlice) < 2 {
+				_, err := conn.Write([]byte("Not enough input \n"))
+				if err != nil {
+					log.Println("Unable to write into admin mode, closing", err)
+					return
+				}
+				continue mainloop
+			}
+			readerName := strings.TrimSpace(pktSlice[1])
+			if strings.ToLower(readerName) == "all" {
+				for _, v := range rt.Readers {
+					v.Lock()
+					v.running = true
+					v.Unlock()
+				}
+			} else {
+				if v, ok := rt.Readers[readerName]; ok {
+					v.Lock()
+					v.running = true
+					v.Unlock()
+				} else {
+					_, err := conn.Write([]byte("Unknow slave \n"))
+					if err != nil {
+						log.Println("Unable to write , closing", err)
+						return
+					}		
+				}
+			}
 			_, err := conn.Write([]byte("started slave \n"))
 			if err != nil {
 				log.Println("Unable to write , closing", err)
 				return
 			}
-		case "STOPSLAVE":
+		case "STOPREADER":
 			if !admin  {
 				_, err := conn.Write([]byte("please login as admin mode \n"))
 				if err != nil {
@@ -251,20 +297,50 @@ mainloop:
 				}
 				continue mainloop
 			}
-			rt.startSlave = false
+			readerName := strings.TrimSpace(pktSlice[1])
+			if strings.ToLower(readerName) == "all" {
+				for _, v := range rt.Readers {
+					v.Lock()
+					v.running = false
+					v.Unlock()
+				}
+			} else {
+				if v, ok := rt.Readers[readerName]; ok {
+					v.Lock()
+					v.running = false
+					v.Unlock()
+				} else {
+					_, err := conn.Write([]byte("Unknown slave \n"))
+					if err != nil {
+						log.Println("Unable to write , closing", err)
+						return
+					}		
+				}
+			}
 			_, err := conn.Write([]byte("stopped slave \n"))
 			if err != nil {
 				log.Println("Unable to write , closing", err)
 				return
-			}			
-		case "SHOWSLAVES":
-			plist := strings.Join(rt.PeerList, " ")
-			statusText := "stopped"
-			if rt.startSlave {
-				statusText = "started"
 			}
-			data := "peer list: " + plist + "| state: " + statusText
-			_, err := conn.Write([]byte(data))
+		case "SHOWWRITER":
+			statusMsg := "------------------------------------\n"
+			statusMsg += fmt.Sprintf("position: %d\n" ,  rt.rlog.Counter)
+ 			_, err := conn.Write([]byte(statusMsg))
+			if err != nil {
+				log.Println("Unable send packet to client, closining", err)
+				return
+			}
+		case "SHOWREADERS":
+			var statusMsg string
+			for k, v := range rt.Readers {
+				v.RLock()
+				statusMsg += "------------------------------------\n"
+				statusMsg += "peer: " + k + "\n"
+				statusMsg += "postion: " + strconv.FormatUint(v.position, 10) + "\n"
+				statusMsg += "running" + strconv.FormatBool(v.running) + "\n"
+				v.RUnlock()
+			}
+ 			_, err := conn.Write([]byte(statusMsg))
 			if err != nil {
 				log.Println("Unable send packet to client, closining", err)
 				return
@@ -278,20 +354,77 @@ mainloop:
 				}
 				continue mainloop
 			}
-			readerPos, err := rt.rlog.GetReaderPos([]byte(strings.TrimSpace(pktSlice[1])))
-			if err != nil {
-				log.Println("Error while read", err)
-				_, err := conn.Write([]byte("Unable to read pos \n"))
+			if v, ok := rt.Readers[strings.TrimSpace(pktSlice[1])]; ok {
+				v.RLock()
+				statusMsg := "------------------------------------\n"
+				statusMsg += "peer: " + strings.TrimSpace(pktSlice[1]) + "\n"
+				statusMsg += "postion: " + strconv.FormatUint(v.position, 10) + "\n"
+				statusMsg += "running" + strconv.FormatBool(v.running) + "\n"
+				v.RUnlock()
+				_, err := conn.Write([]byte(statusMsg))
+				if err != nil {
+					log.Println("Unable send packet to client, closining", err)
+					return
+				}
+			} else {
+				_, err := conn.Write([]byte("Unknown peer , please use SHOWREADERS\n"))
+				if err != nil {
+					log.Println("Unable send packet to client, closining", err)
+					return
+				}
+			}
+		case "SETREADER":
+			if !admin  {
+				_, err := conn.Write([]byte("please login as admin mode \n"))
+				if err != nil {
+					log.Println("Unable to write into admin mode, closing", err)
+					return
+				}						
+				continue mainloop
+			}
+			if len(pktSlice) < 3 {
+				_, err := conn.Write([]byte("Not enough args \n"))
 				if err != nil {
 					log.Println("Unable to write into admin mode, closing", err)
 					return
 				}
 				continue mainloop
 			}
-			_, err = conn.Write([]byte(fmt.Sprintf("Slave Position: %d \n", readerPos)))
-			if err != nil {
-				log.Println("Unable to write into admin mode, closing", err)
-				return
+			if v, ok := rt.Readers[strings.TrimSpace(pktSlice[1])]; ok {
+				var statusMsg string
+				v.Lock()
+				if v.running {
+					statusMsg = "Please stop slave before setting position\n"
+				} else {
+					positionTxt :=  strings.TrimSpace(pktSlice[2])
+					if strings.HasPrefix(positionTxt, "+") || strings.HasPrefix(positionTxt, "=") || strings.HasPrefix(positionTxt, "-") {
+						sp, err := strconv.ParseUint(positionTxt[1:], 10, 64)
+						if err != nil {
+							statusMsg = "Unable to parse the positin text " + err.Error() + "\n"
+						} else {
+							if positionTxt[0] == '+' {
+								v.position += sp
+							} else if positionTxt[0] == '-' {
+								v.position -= sp
+							} else if positionTxt[0] == '=' {
+								v.position = sp
+							}
+							statusMsg = "position set to " + strconv.FormatUint(v.position, 10) + ", reader: "+ pktSlice[1] + "\n"
+						}
+					}
+				}
+				v.Unlock()
+				_, err := conn.Write([]byte(statusMsg))
+				if err != nil {
+					log.Println("Unable send packet to client, closining", err)
+					return
+				}
+			} else {
+				_, err := conn.Write([]byte("Unknown peer , please use SHOWREADERS\n"))
+				if err != nil {
+					log.Println("Unable send packet to client, closining", err)
+					return
+				}
 			}
 
 		default:
@@ -300,7 +433,7 @@ mainloop:
 				log.Println("Unable send packet to client, closining", err)
 				return
 			}
+			
 		}
 	}
 }
-
