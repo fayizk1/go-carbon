@@ -110,7 +110,7 @@ func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]Inde
 		fullName := strings.Join(resolved, ".")
 		sdata, err := idx.DB.Get([]byte(fullName), nil)
 		if err != nil && err != leveldb.ErrNotFound {
-			logrus.Println(err)
+			logrus.Println("[Index]",err)
 			return []IndexType{}, err
 		} else if err == leveldb.ErrNotFound {
 			return  []IndexType{IndexType{Isleaf : true, FullName : fullName, LastNode : resolved[len(resolved)-1]},}, nil
@@ -155,7 +155,7 @@ func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]Inde
 		copy(urkey, unResolved[1:])
 		tempChildren, err := idx.GetChildrenSpecial(rkey, urkey)
 		if err != nil {
-			logrus.Println("Unable to solve keys", err)
+			logrus.Println("[Index]Unable to solve keys", err)
 		}
 		if tempChildren == nil {
 			continue

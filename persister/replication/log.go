@@ -2,13 +2,13 @@ package replication
 
 import (
 	"time"
-	"log"
 	"path"
 	"sync"
 	"bytes"
 	"errors"
 	"sync/atomic"
  	"strconv"
+	"github.com/Sirupsen/logrus"
 	leveldb_filter "github.com/syndtr/goleveldb/leveldb/filter"
 	leveldb_opt "github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"
@@ -112,7 +112,7 @@ func (rl *LevelReplicationLog) GetCurrentPos() (uint64, error) {
 		}
 		sp, err := strconv.ParseUint(string(spltData[1]), 10, 64)
 		if err != nil {
-			log.Println("Error while looking key, skipping", err)
+			logrus.Println("[Replication log] Error while looking key, skipping", err)
 			continue
 		}
 		if sp > lastpos {
@@ -169,17 +169,17 @@ mainloop:
 			pos := rp.Counter
 			err := rp.SetDatePos([]byte(time.Now().Format(DATE_LAYOUT)), pos)
 			if err != nil {
-				log.Println("Replication: Error while setting date pos", err)
+				logrus.Println("[REPLICATIO THREAD] Error while setting date pos", err)
 			}
 		case <-purgeTicker.C:
 			pos, err := rp.GetDatePos([]byte(time.Now().Add(-(24 * 7) * time.Hour).Format(DATE_LAYOUT)))
 			if err != nil {
-				log.Println("Replication: Date Get error", err)
+				logrus.Println("[Replication Thread] Replication: Date Get error", err)
 				continue mainloop
 			}
 			err = rp.PurgeLogs(0, pos)
 			if err != nil {
-				log.Println("Replication:  error while purging", err)
+				logrus.Println("[Replication Thread]  error while purging", err)
 				continue mainloop
 			}
 			

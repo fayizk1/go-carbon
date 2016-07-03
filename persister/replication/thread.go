@@ -2,7 +2,6 @@ package replication
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"time"
 	"bytes"
@@ -11,6 +10,7 @@ import (
 	"sync"
 	"strings"
 	"encoding/json"
+	"github.com/Sirupsen/logrus"
 	"github.com/fayizk1/go-carbon/points"
 )
 
@@ -44,13 +44,13 @@ func (rt *LevelReplicationThread) Start() {
 func (rt *LevelReplicationThread) startReader(addr string) {
 	pos, err := rt.rlog.GetReaderPos([]byte(addr))
 	if err != nil {
-		log.Println("Unable to read the thead postion", addr, pos)
+		logrus.Println("[Replication Thread] Unable to read the thead postion", addr, pos)
 		panic(err)
 	}
-	log.Printf("Starting read slave %s at %d", addr, pos)
+	logrus.Printf("[Replication thread] Starting read slave %s at %d", addr, pos)
 	rt.Readers[addr].position = pos
 	go func() { //Reader position
-		log.Println("starting pos logger for ", addr)
+		logrus.Println("[Replication thread] starting pos logger for ", addr)
 		tick:= time.NewTicker(100 * time.Millisecond)
 		for {
 			select {
@@ -60,7 +60,7 @@ func (rt *LevelReplicationThread) startReader(addr string) {
 				rt.Readers[addr].RUnlock()
 				err := rt.rlog.SetReaderPos([]byte(addr), position)
 				if err != nil {
-					log.Println("Unable to write reader pos", err)
+					logrus.Println("[Replication thread] Unable to write reader pos", err)
 					break
 				}
 			}
@@ -70,13 +70,13 @@ func (rt *LevelReplicationThread) startReader(addr string) {
 connect_expr:
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		log.Println("Unable to connect server", err)
+		logrus.Println("[Replication Thread]Unable to connect server", err)
 		time.Sleep(10 * time.Second) //wait before re-connect
 		goto connect_expr
 	}
 	reader := bufio.NewReader(conn)
 	if err := conn.SetReadDeadline(time.Now().Add(20 * time.Second)); err != nil {
-		log.Println("Unable to set client read timout, restarting", err)
+		logrus.Println("[replication Thread] Unable to set client read timout, restarting", err)
 		 goto connect_expr
 	}
 	var running bool
@@ -95,46 +95,46 @@ connect_expr:
 		queryCommand := fmt.Sprintf("GETLOG %d", position)
 		_, err := conn.Write([]byte(queryCommand + "\n"))
 		if err != nil {
-			log.Println("[replication] client write failed, ", err, ", reconnecting")
+			logrus.Println("[replication Thread] client write failed, ", err, ", reconnecting")
 			conn.Close()
 			goto connect_expr
 		}
 		if err := conn.SetReadDeadline(time.Now().Add(20 * time.Second)); err != nil {
-			log.Println("Unable to set client read timout, restarting", err)
+			logrus.Println("[Replication Thread] Unable to set client read timout, restarting", err)
 			goto connect_expr
 		}
 		message, err := reader.ReadBytes('\n')
 		if err != nil {
-			log.Println("[replication] client read failed, ", err, ", reconnecting")
+			logrus.Println("[Replication Thread] client read failed, ", err, ", reconnecting")
 			conn.Close()
 			goto connect_expr
 		}
 		if bytes.HasPrefix( message,[]byte("ERRLAST")) {
-			log.Println("No log to read, waiting 10 sec")
+			logrus.Println("[Replication Thread] No log to read, waiting 10 sec")
 			time.Sleep(10 * time.Second)
 			continue
 		}
 		messageSlice := bytes.Split(message, []byte("\x01"))
 		if len(messageSlice) != 2 {
-			log.Println("Unknown message", string(message), addr)
+			logrus.Println("[Replication Thread] Unknown message", string(message), addr)
 			time.Sleep(1 * time.Second)
 			continue
 		}
 		sPos, err := strconv.ParseUint(string(messageSlice[0]), 10, 64)
 		if err != nil {
-			log.Println("Unknown message", string(message), addr)
+			logrus.Println("[Replication Thread] Unknown message", string(message), addr)
 			time.Sleep(1 * time.Second)
 			continue
 		}
 		if sPos != position {
-			log.Printf("[Replicatio] Unknown log postion recieved, old : %d, recieved : %d, server: %s", pos, sPos, addr)
+			logrus.Printf("[Replication Thread] Unknown log postion recieved, old : %d, recieved : %d, server: %s", pos, sPos, addr)
 			time.Sleep(1 * time.Second)
 			continue
 		}
 		var pts *points.Points = &points.Points{}
 		err = json.Unmarshal(bytes.TrimSpace(messageSlice[1]), pts)
 		if err != nil {
-			log.Println("Unable to parse packet", string(message), err, addr)
+			logrus.Println("[Replication Thread] Unable to parse packet", string(message), err, addr)
 			time.Sleep(1 * time.Second)
 			continue
 		}
@@ -158,9 +158,9 @@ func (rt *LevelReplicationThread) startWriter() {
 		conn, err := listener.Accept()
 		if  err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-				log.Println("TCP accept failed: %s", err)
+				logrus.Println("[Replication Thread] TCP accept failed: %s", err)
 			} else {
-				log.Println("TCP Server Unknown error", err)
+				logrus.Println("[Replication Thread] TCP Server Unknown error", err)
 			}
 			continue
 		}
@@ -171,7 +171,7 @@ func (rt *LevelReplicationThread) startWriter() {
 func handleConnection(rt *LevelReplicationThread, conn net.Conn) {
 	raddr := conn.RemoteAddr().String()
 	defer func() {
-		log.Println("Closing connection...", raddr)
+		logrus.Println("[Replication Thread] Closing connection...", raddr)
 		conn.Close()
 	}()
 	bufReader := bufio.NewReader(conn)
@@ -182,7 +182,7 @@ mainloop:
 		conn.SetReadDeadline(time.Now().Add(20 * time.Second))
 		pkt, err := bufReader.ReadString('\n')
 		if err != nil {
-			log.Println(err)
+			logrus.Println("[Replication thread]", err)
 			return
 		}
 		pktSlice := strings.Split(pkt, " ")
@@ -191,7 +191,7 @@ mainloop:
 			if len(pktSlice) != 2 {
 				_, err := conn.Write(append([]byte("ERRCOMM"), '\x01', '_', '\n'))
 				if err != nil {
-					log.Println("Unable send packet to client, closing", err)
+					logrus.Println("[Replication Thread] Unable send packet to client, closing", err)
 					return
 				}
 				continue mainloop
@@ -200,7 +200,7 @@ mainloop:
 			if err != nil {
 				_, err = conn.Write(append([]byte("ERRUNKNWNQRY"), '\x01', '_', '\n'))
 				if err != nil {
-					log.Println("Unable send packet to client, closing", err)
+					logrus.Println("[Replication Thread] Unable send packet to client, closing", err)
 					return
 				}
 				continue mainloop
@@ -209,7 +209,7 @@ mainloop:
 			if rPos > cPos {
 				_, err := conn.Write(append([]byte("ERRLAST"), '\x01', '_', '\n'))
 				if err != nil {
-					log.Println("Unable send packet to client, closining", err)
+					logrus.Println(" [Replication Thread] Unable send packet to client, closining", err)
 					return
 				}
 				continue mainloop
@@ -221,7 +221,7 @@ mainloop:
 				errMsg = append(errMsg, '\n')
 				_, err := conn.Write(errMsg)
 				if err != nil {
-					log.Println("Unable send packet to client, closining", err)
+					logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
 					return
 				}
 				continue mainloop
@@ -231,32 +231,32 @@ mainloop:
 			data = append(data, '\n')
 			_, err = conn.Write(data)
 			if err != nil {
-				log.Println("Unable send packet to client, closining", err)
+				logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
 				return
 			}
 		case "QUIT":
-			log.Println("Closing connection", raddr)
+			logrus.Println("[Replication Thread] Closing connection", raddr)
 			return
 		case "STARTADMIN":
-			log.Println("Got admin request from", raddr)
+			logrus.Println("[Replication Thread] Got admin request from", raddr)
 			admin = true
 			_, err := conn.Write([]byte("started admin mode \n"))
 			if err != nil {
-				log.Println("Unable to write into admin mode, closing", err)
+				logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
 				return
 			}			
 		case "QUITADMIN":
 			admin = false
 			_, err := conn.Write([]byte("exited from admin mode \n"))
 			if err != nil {
-				log.Println("Unable to write into admin mode, closing", err)
+				logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
 				return
 			}						
 		case "STARTREADER":
 			if !admin  {
 				_, err := conn.Write([]byte("please login as admin mode \n"))
 				if err != nil {
-					log.Println("Unable to write into admin mode, closing", err)
+					logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
 					return
 				}						
 				continue mainloop
@@ -264,7 +264,7 @@ mainloop:
 			if len(pktSlice) < 2 {
 				_, err := conn.Write([]byte("Not enough input \n"))
 				if err != nil {
-					log.Println("Unable to write into admin mode, closing", err)
+					logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
 					return
 				}
 				continue mainloop
@@ -284,7 +284,7 @@ mainloop:
 				} else {
 					_, err := conn.Write([]byte("Unknow slave \n"))
 					if err != nil {
-						log.Println("Unable to write , closing", err)
+						logrus.Println("[Replication Thread] Unable to write , closing", err)
 						return
 					}
 					continue mainloop
@@ -292,14 +292,22 @@ mainloop:
 			}
 			_, err := conn.Write([]byte("started slave \n"))
 			if err != nil {
-				log.Println("Unable to write , closing", err)
+				logrus.Println("[Replication Thread] Unable to write , closing", err)
 				return
 			}
 		case "STOPREADER":
 			if !admin  {
 				_, err := conn.Write([]byte("please login as admin mode \n"))
 				if err != nil {
-					log.Println("Unable to write into admin mode, closing", err)
+					logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
+					return
+				}
+				continue mainloop
+			}
+			if len(pktSlice) < 2 {
+				_, err := conn.Write([]byte("Not enough input \n"))
+				if err != nil {
+					logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
 					return
 				}
 				continue mainloop
@@ -319,7 +327,7 @@ mainloop:
 				} else {
 					_, err := conn.Write([]byte("Unknown slave \n"))
 					if err != nil {
-						log.Println("Unable to write , closing", err)
+						logrus.Println("[Replication Thread] Unable to write , closing", err)
 						return
 					}
 					continue mainloop
@@ -327,7 +335,7 @@ mainloop:
 			}
 			_, err := conn.Write([]byte("stopped slave \n"))
 			if err != nil {
-				log.Println("Unable to write , closing", err)
+				logrus.Println("[Replication Thread] Unable to write , closing", err)
 				return
 			}
 		case "SHOWWRITER":
@@ -335,7 +343,7 @@ mainloop:
 			statusMsg += fmt.Sprintf("position: %d\n" ,  rt.rlog.Counter)
  			_, err := conn.Write([]byte(statusMsg))
 			if err != nil {
-				log.Println("Unable send packet to client, closining", err)
+				logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
 				return
 			}
 		case "SHOWREADERS":
@@ -350,14 +358,14 @@ mainloop:
 			}
  			_, err := conn.Write([]byte(statusMsg))
 			if err != nil {
-				log.Println("Unable send packet to client, closining", err)
+				logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
 				return
 			}
 		case "READERSTATUS":
 			if len(pktSlice) < 2 {
 				_, err := conn.Write([]byte("Not enough args \n"))
 				if err != nil {
-					log.Println("Unable to write into admin mode, closing", err)
+					logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
 					return
 				}
 				continue mainloop
@@ -371,13 +379,13 @@ mainloop:
 				v.RUnlock()
 				_, err := conn.Write([]byte(statusMsg))
 				if err != nil {
-					log.Println("Unable send packet to client, closining", err)
+					logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
 					return
 				}
 			} else {
 				_, err := conn.Write([]byte("Unknown peer , please use SHOWREADERS\n"))
 				if err != nil {
-					log.Println("Unable send packet to client, closining", err)
+					logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
 					return
 				}
 			}
@@ -385,7 +393,7 @@ mainloop:
 			if !admin  {
 				_, err := conn.Write([]byte("please login as admin mode \n"))
 				if err != nil {
-					log.Println("Unable to write into admin mode, closing", err)
+					logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
 					return
 				}						
 				continue mainloop
@@ -393,7 +401,7 @@ mainloop:
 			if len(pktSlice) < 3 {
 				_, err := conn.Write([]byte("Not enough args \n"))
 				if err != nil {
-					log.Println("Unable to write into admin mode, closing", err)
+					logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
 					return
 				}
 				continue mainloop
@@ -424,13 +432,13 @@ mainloop:
 				v.Unlock()
 				_, err := conn.Write([]byte(statusMsg))
 				if err != nil {
-					log.Println("Unable send packet to client, closining", err)
+					logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
 					return
 				}
 			} else {
 				_, err := conn.Write([]byte("Unknown peer , please use SHOWREADERS\n"))
 				if err != nil {
-					log.Println("Unable send packet to client, closining", err)
+					logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
 					return
 				}
 			}
@@ -438,7 +446,7 @@ mainloop:
 		default:
 			_, err := conn.Write(append([]byte("ERRUNKN"), '\x01', '_', '\n'))
 			if err != nil {
-				log.Println("Unable send packet to client, closining", err)
+				logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
 				return
 			}
 			

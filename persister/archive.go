@@ -2,13 +2,13 @@ package persister
 
 import (
 	"os"
-	"log"
 	"sync"
 	"time"
 	"sort"
 	"path"
 	"strconv"
 	"errors"
+	"github.com/Sirupsen/logrus"
 	"github.com/fayizk1/go-carbon/points"
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -50,7 +50,7 @@ func (sds *Shards) GetShard(name string, create bool) *Shard {
 	if !create {
 		fileInfo, err := os.Stat(path.Join(sds.basepath, name))
 		if err != nil {
-			log.Println("[archive] -", err)
+			logrus.Println("[archive] -", err)
 			return nil
 		} else if !fileInfo.IsDir() {
 			return nil
@@ -73,7 +73,7 @@ func (sds *Shards) Close() {
 func NewArchive(basepath string, mapd *LevelMap) *Archive {
 	err := os.MkdirAll(basepath, 0755)
 	if err != nil {
-		log.Println("Unable to open archive", err)
+		logrus.Println("[Archive] Unable to open archive", err)
 		panic(err.Error())
 	}
 	shards := NewShards(basepath)
@@ -134,7 +134,7 @@ func (ar *Archive) Store(key []byte, data *points.Points, sec ,exptime int64, ag
 	storelist := make(map[string]*leveldb.Batch)
 trans_loop:
 	for t , v := range finalData {
-		tn := time.Unix(t, 0).Format("20060102")
+		tn := time.Unix(t, 0).UTC().Format("20060102")
 		_, ok := storelist[tn]
 		if !ok {
 			storelist[tn] =  new(leveldb.Batch)
@@ -145,7 +145,7 @@ trans_loop:
 		if err == nil {
 			currentValue, err := strconv.ParseFloat(string(d), 64)
 			if err != nil {
-				log.Println("Error: Unable to convert stored value", err)
+				logrus.Println("[Archive] Error: Unable to convert stored value", err)
 				continue
 			}
 			switch aggMethod {
@@ -171,7 +171,7 @@ trans_loop:
 		sh := ar.shards.GetShard(k, true)
 		err := sh.Write(v)
 		if err != nil {
-			log.Println("Error: Unable to write points into shard", k )
+			logrus.Println("[Archive] Error: Unable to write points into shard", k )
 		}
 	}
 	return nil
@@ -179,7 +179,7 @@ trans_loop:
 
 func (ar *Archive) GetData(start, end int64, key []byte, sorting bool) Points {
         if start > end {
-                log.Println("Warning: query start time is higher than end time")
+                logrus.Println("[Archive] Warning: query start time is higher than end time")
                 return nil
         }
 	ar.RLock()
@@ -190,13 +190,13 @@ func (ar *Archive) GetData(start, end int64, key []byte, sorting bool) Points {
 	amp := AtomicPoints{}
 	start_key := GenMetricKey(key, start)
 	end_key := GenMetricKey(key, end)
-	ct := time.Unix(start, 0)
-	et := time.Unix(end, 0)
+	ct := time.Unix(start, 0).UTC()
+	et := time.Unix(end, 0).UTC()
 	var wg sync.WaitGroup
 	for ; (ct.Unix() - (ct.Unix() %DAYSECONDS)) <= (et.Unix() - (et.Unix() % DAYSECONDS)); ct = ct.Add(24 * time.Hour) {
 		shard := ar.shards.GetShard(ct.Format("20060102"), false)
 		if shard == nil {
-			log.Println("[persistor] Unable to locate shard", ct.Format("20060102"))
+			logrus.Println("[Archive] Unable to locate shard", ct.Format("20060102"))
 			continue
 		}
 		wg.Add(1)

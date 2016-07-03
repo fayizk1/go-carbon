@@ -1,12 +1,12 @@
 package persister
 
 import (
-	"log"
 	"path"
 	"strconv"
 	"github.com/syndtr/goleveldb/leveldb/util"
 	"github.com/fayizk1/go-carbon/points"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/Sirupsen/logrus"
 	leveldb_opt "github.com/syndtr/goleveldb/leveldb/opt"
 	leveldb_filter "github.com/syndtr/goleveldb/leveldb/filter"
 )
@@ -47,7 +47,7 @@ func (this *Shard) RangeScan(start, end, keyname []byte) []points.Point {
 		value := iter.Value()
 		s, err := strconv.ParseFloat(string(value), 64)
 		if err != nil {
-			log.Println("Shard: Error - Unable to parse value", err)
+			logrus.Println("[Shard]: Error - Unable to parse value", err)
 			continue
 		}
 		metrics = append(metrics, points.Point{Timestamp: t, Value: s})
@@ -55,7 +55,7 @@ func (this *Shard) RangeScan(start, end, keyname []byte) []points.Point {
 	iter.Release()
 	err := iter.Error()
 	if err != nil {
-		log.Println("Shard: Unable to iterate", err)
+		logrus.Println("[Shard]: Unable to iterate", err)
 		return nil
 	}
 	return metrics
