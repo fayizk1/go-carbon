@@ -132,14 +132,14 @@ func (mp *LevelMap) GetLogPosition() (uint64, error) {
 	
 }
 
-func (mp *LevelMap) EnableThrottling() {
+func (mp *LevelMap) EnableThrottle() {
 	mp.ThrottleMetaData.Lock()
 	defer mp.ThrottleMetaData.Unlock()
 	logrus.Println("Enabling throttle")
 	mp.ThrottleMetaData.Enabled = true
 }
 
-func (mp *LevelMap) DisableThrottling() {
+func (mp *LevelMap) DisableThrottle() {
 	mp.ThrottleMetaData.Lock()
 	defer mp.ThrottleMetaData.Unlock()
 	logrus.Println("Disabling throttle")

@@ -43,6 +43,7 @@ func StartHTTPReader() {
 	go func() {
 		http.HandleFunc("/queryrange", serveQueryRange)
 		http.HandleFunc("/findnodes", serveFindNodes)
+		http.HandleFunc("/throttle", throttleHandler)
 		err := http.ListenAndServe(h.listen, nil)
 		if err != nil {
 			log.Fatal("ListenAndServe: ", err)
@@ -56,6 +57,24 @@ func serveFindNodes(w http.ResponseWriter, r *http.Request) {
 	out, _ := json.Marshal(nodes)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Write(out)
+}
+
+func throttleHandler(w http.ResponseWriter, r *http.Request) {
+	method := r.FormValue("method")
+	switch method {
+	case "toggle":
+		key := r.FormValue("key")
+		if key == "enable" {
+			h.persistor.EnableThrottle()
+		} else if key == "disable" {
+			h.persistor.DisableThrottle()
+		} else {
+			http.Error(w, "BAD REQUEST[START]", 400)
+			return
+		}
+	default:
+		http.Error(w, "BAD REQUEST", 400)
+	}
 }
 
 func serveQueryRange(w http.ResponseWriter, r *http.Request) {
@@ -188,3 +207,4 @@ func serveQueryRange(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 	return
 }
+

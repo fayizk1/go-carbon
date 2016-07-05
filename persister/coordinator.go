@@ -434,3 +434,10 @@ func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (
 	return ar.GetData(start, end, shortKey, sorting), step, npoints, string(aggM)
 }
 
+func (p *LevelStore) EnableThrottle() {
+	p.Map.EnableThrottle()
+}
+
+func (p *LevelStore) DisableThrottle() {
+	p.Map.DisableThrottle()
+}
