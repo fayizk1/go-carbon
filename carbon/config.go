@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"time"
-
 	"github.com/BurntSushi/toml"
 	"github.com/fayizk1/go-carbon/persister"
 )
@@ -101,6 +100,11 @@ type replicationConfig struct {
 	Logpath string `toml:"logpath"`
 }
 
+type rateLimit struct {
+	Period int `toml:"period"`
+	Limit  int `toml:"limit"`
+}
+
 // Config ...
 type Config struct {
 	Common     commonConfig     `toml:"common"`
@@ -113,6 +117,7 @@ type Config struct {
 	HTTPReader httpreaderConfig `toml:"httpreader"`
 	Pprof      pprofConfig      `toml:"pprof"`
 	Replication    replicationConfig `toml:"replication"`
+	Rate          rateLimit `toml:"rate"`
 }
 
 // NewConfig ...
@@ -177,6 +182,10 @@ func NewConfig() *Config {
 			Peerlist : []string{},
 			PasswordHash : "",
 			Logpath : "/var/lib/",
+		},
+		Rate : rateLimit{
+			Limit : 100,
+			Period: 60,
 		},
 	}
 

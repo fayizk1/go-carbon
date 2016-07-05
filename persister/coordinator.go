@@ -67,8 +67,8 @@ func (ars *Archives) Get(pos int) *Archive{
 }
 
 func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in chan *points.Points,
-	confirm chan *points.Points, peerlist []string, rserver string, rpasswordHash string, Logpath string) *LevelStore {
-	Map := NewMap(rootPath)
+	confirm chan *points.Points, peerlist []string, rserver string, rpasswordHash string, Logpath string, RateLimit, RateLimitPeriod int) *LevelStore {
+	Map := NewMap(rootPath, RateLimit, RateLimitPeriod, 3)
 	archives := NewArchives(rootPath, Map)
 	index := NewIndex(rootPath)
 	rplog := replication.NewReplicationLog(Logpath)
@@ -139,7 +139,7 @@ func store(p *LevelStore, values *points.Points, replication bool) {
 	}
 	err = p.index.CreateIndex(values.Metric)
 	if err != nil {
-		logrus.Errorf("[persister] Unable to create index for %s", values.Metric)
+		logrus.Errorf("[persister] Unable to create index for %s, Error - %s", values.Metric, err.Error())
 		return
 	}
 	if p.confirm != nil {
