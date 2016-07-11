@@ -116,7 +116,7 @@ func (mp *LevelMap) GetShortKey(key string, iswrite bool) ([]byte, error) {
 			return nil, err
 		}
 	}
-	return keydata, err
+	return keydata, nil
 }
 
 func (mp *LevelMap) GetAggregationMethod(mapKey []byte) ([]byte, error) {
