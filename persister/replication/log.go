@@ -4,7 +4,6 @@ import (
 	"time"
 	"path"
 	"sync"
-	"strings"
 	"errors"
 	"sync/atomic"
  	"strconv"
@@ -109,14 +108,11 @@ func (rl *LevelReplicationLog) GetCurrentPos() (uint64, error) {
 	}
 	var lastpos uint64 = 1
 	if isPosQS {
-		splt_pos := strings.Split(string(cpos), ":")
-		if len(splt_pos) > 1 {
-			tlp, err := strconv.ParseUint(splt_pos[1], 10, 64)
-			if err != nil {
-				logrus.Println("[Replication log] Error while extracting, skipping", err)
-			} else {
-				lastpos = tlp 
-			}
+		tlp, err := strconv.ParseUint(string(cpos), 10, 64)
+		if err != nil {
+			logrus.Println("[Replication log] Error while extracting, skipping", err)
+		} else {
+			lastpos = tlp 
 		}
 	}
 	for  {
