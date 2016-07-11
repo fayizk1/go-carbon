@@ -93,7 +93,7 @@ func (rl *LevelReplicationLog) PurgeLogs(sPos uint64, ePos uint64) (error) {
 }
 
 func (rl *LevelReplicationLog) GetCurrentPos() (uint64, error) {
-	isPosQS := false
+	var lastpos uint64 = 1
 	cpos, err := rl.GetDatePos([]byte(time.Now().Format(DATE_LAYOUT)))
 	if err != nil {
 		logrus.Println("[Replication Thread] Replication: Date Get error, unableble to get current date pos for lastpos", err)
@@ -101,19 +101,10 @@ func (rl *LevelReplicationLog) GetCurrentPos() (uint64, error) {
 		if err != nil {
 			logrus.Println("[Replication Thread] Replication: Date Get error, unable to get last date pos for lastpos, setting to 0", err)
 		} else {
-			isPosQS = true
+			lastpos = cpos
 		}
 	} else {
-		isPosQS = true
-	}
-	var lastpos uint64 = 1
-	if isPosQS {
-		tlp, err := strconv.ParseUint(string(cpos), 10, 64)
-		if err != nil {
-			logrus.Println("[Replication log] Error while extracting, skipping", err)
-		} else {
-			lastpos = tlp 
-		}
+		lastpos = cpos
 	}
 	for  {
 		_, err := rl.DB.Get(append([]byte("log:"), []byte(strconv.FormatUint(lastpos, 10))...), nil)
