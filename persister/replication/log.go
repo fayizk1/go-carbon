@@ -125,7 +125,7 @@ func (rl *LevelReplicationLog) GetCurrentPos() (uint64, error) {
 			lastpos--
 			logrus.Println("starting log pos at", lastpos)
 			break
-		} else {
+		} else if err != nil {
 			logrus.Println("Unable to get pos, skipping", err)
 		}
 		lastpos++
