@@ -67,8 +67,9 @@ func (ars *Archives) Get(pos int) *Archive{
 }
 
 func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in chan *points.Points,
-	confirm chan *points.Points, peerlist []string, rserver string, rpasswordHash string, Logpath string, RateLimit, RateLimitPeriod int) *LevelStore {
-	Map := NewMap(rootPath, RateLimit, RateLimitPeriod, 3)
+	confirm chan *points.Points, peerlist []string, rserver string, rpasswordHash string, Logpath string,
+	RateLimit, RateLimitPeriod int, MailServer string, MailFrom string, MailTO []string, MailUsername, MailPassword string) *LevelStore {
+	Map := NewMap(rootPath, RateLimit, RateLimitPeriod, 3, MailServer, MailFrom, MailTO, MailUsername, MailPassword)
 	archives := NewArchives(rootPath, Map)
 	index := NewIndex(rootPath)
 	rplog := replication.NewReplicationLog(Logpath)
@@ -133,8 +134,8 @@ func (p *LevelStore) Stat(metric string, value float64) {
 
 func store(p *LevelStore, values *points.Points, replication bool) {
 	shortKey, err := p.Map.GetShortKey(values.Metric, true)
-	if err != nil {
-		logrus.Errorf("[persister] unable to get short key for %s", values.Metric)
+	if err != nil && err != ErrCreateRateLimit {
+		logrus.Errorf("[persister] unable to get short key for %s, Error: %q", values.Metric, err)
 		return
 	}
 	err = p.index.CreateIndex(values.Metric)

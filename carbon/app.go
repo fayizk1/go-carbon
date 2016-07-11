@@ -233,6 +233,11 @@ func (app *App) startPersister() {
 			app.Config.Replication.Logpath,
 			app.Config.Rate.Limit,
 			app.Config.Rate.Period,
+			app.Config.Mail.Server,
+			app.Config.Mail.From,
+			app.Config.Mail.To,
+			app.Config.Mail.Username,
+			app.Config.Mail.Password
 		)
 		p.SetGraphPrefix(app.Config.Common.GraphPrefix)
 		p.SetMetricInterval(app.Config.Common.MetricInterval.Value())

@@ -1,6 +1,7 @@
 package persister
 
 import (
+	"fmt"
 	"path"
 	"errors"
 	"strconv"
@@ -35,9 +36,15 @@ type LevelMap struct {
 	ThrottleMetaData *throttleMetaData
 	Path string
 	DB *leveldb.DB
+	MailServer string
+	MailFrom string
+	MailTO []string
+	MailUsername string
+	MailPassword string
+	
 }
 
-func NewMap(basepath string, rateLimit, rateLimitPeriod, sampleCount int) (*LevelMap) {
+func NewMap(basepath string, rateLimit, rateLimitPeriod, sampleCount int, MailServer, MailFrom string, MailTO []string, MailUsername string, MailPassword string) (*LevelMap) {
 	options := &leveldb_opt.Options{
 		BlockCacheCapacity : MAP_CACHE_SIZE,
 		Filter:             leveldb_filter.NewBloomFilter(15),
@@ -47,8 +54,10 @@ func NewMap(basepath string, rateLimit, rateLimitPeriod, sampleCount int) (*Leve
 	if err != nil {
 		panic(err)
 	}
-	tmd := &throttleMetaData{Expiry:0, SamplePatten : nil, RateLimit: rateLimit, RateLimitPeriod: rateLimitPeriod, SampleCount : sampleCount, Enabled : true, DisabledWrite: false, DisabledTime: 0}
-	return &LevelMap{Path : path, DB: db, ThrottleMetaData: tmd,}
+	tmd := &throttleMetaData{Expiry:0, SamplePatten : nil, RateLimit: rateLimit,
+		RateLimitPeriod: rateLimitPeriod, SampleCount : sampleCount, Enabled : true, DisabledWrite: false,
+		DisabledTime: 0,}
+	return &LevelMap{Path : path, DB: db, ThrottleMetaData: tmd,  MailServer : MailServer, MailFrom : MailFrom, MailTO : MailTO, MailUsername: MailUsername, MailPassword: MailPassword}
 }
 
 func (mp *LevelMap) GetShortKey(key string, iswrite bool) ([]byte, error) {
@@ -85,6 +94,8 @@ func (mp *LevelMap) GetShortKey(key string, iswrite bool) ([]byte, error) {
 					mp.ThrottleMetaData.DisabledWrite = true
 					mp.ThrottleMetaData.DisabledTime = time.Now().Unix() + int64(mp.ThrottleMetaData.RateLimitPeriod * 60)
 					logrus.Errorf("[Persister] Rate Limit: Critical high create metric rate - %d, sample - %v, dropping packet", mp.ThrottleMetaData.Rate ,mp.ThrottleMetaData.SamplePatten)
+					sendMail(mp.MailFrom, mp.MailTO, mp.MailServer, mp.MailUsername, mp.MailPassword, "Critical: Radon - High metrics create requests",
+						fmt.Sprintf("Rate Limit: Critical high create metrics rate - %d, sample - %v, dropping packet", mp.ThrottleMetaData.Rate ,mp.ThrottleMetaData.SamplePatten))
 					return nil, ErrCreateRateLimit
 				}
 			}

@@ -100,6 +100,14 @@ type replicationConfig struct {
 	Logpath string `toml:"logpath"`
 }
 
+type mailConfig struct {
+	Server string `toml:"server"`
+	From string `toml:"from"`
+	To []string `toml:"to"`
+	Username string `toml:"username"`
+	Password string `toml:"password"`
+}
+
 type rateLimit struct {
 	Period int `toml:"period"`
 	Limit  int `toml:"limit"`
@@ -118,6 +126,7 @@ type Config struct {
 	Pprof      pprofConfig      `toml:"pprof"`
 	Replication    replicationConfig `toml:"replication"`
 	Rate          rateLimit `toml:"rate"`
+	Mail          mailConfig `toml:"mail"`
 }
 
 // NewConfig ...
@@ -186,6 +195,10 @@ func NewConfig() *Config {
 		Rate : rateLimit{
 			Limit : 100,
 			Period: 60,
+		},
+		Mail: mailConfig {
+			Server : "127.0.0.1",
+			
 		},
 	}
 
