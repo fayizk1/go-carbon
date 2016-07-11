@@ -4,14 +4,13 @@ import (
 	"time"
 	"path"
 	"sync"
-	"bytes"
+	"strings"
 	"errors"
 	"sync/atomic"
  	"strconv"
 	"github.com/Sirupsen/logrus"
 	leveldb_filter "github.com/syndtr/goleveldb/leveldb/filter"
 	leveldb_opt "github.com/syndtr/goleveldb/leveldb/opt"
-	"github.com/syndtr/goleveldb/leveldb/util"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -86,38 +85,50 @@ start:
 }
 
 func (rl *LevelReplicationLog) PurgeLogs(sPos uint64, ePos uint64) (error) {
-	skey := append([]byte("log:"), []byte(strconv.FormatUint(ePos, 10))...)
-	ekey := append([]byte("log:"), []byte(strconv.FormatUint(ePos, 10))...)
 	batch := new(leveldb.Batch)
-	iter := rl.DB.NewIterator(&util.Range{Start: skey, Limit: ekey}, nil)
-	for iter.Next() {
-		batch.Delete(iter.Key())
+	for i := sPos; i <= ePos; i++ {
+		batch.Delete(append([]byte("log:"), []byte(strconv.FormatUint(i, 10))...))
 	}
 	err := rl.DB.Write(batch, nil)
-	iter.Release()
 	return err
 }
 
 func (rl *LevelReplicationLog) GetCurrentPos() (uint64, error) {
-	skey := append([]byte("log:"), []byte(strconv.FormatUint(0, 10))...)
-	iter := rl.DB.NewIterator(&util.Range{Start: skey}, nil)
-	var lastpos uint64 = 0
-	for iter.Next() {
-		if !bytes.HasPrefix(iter.Key(), []byte("log:")) {
-			break
-		}
-		spltData := bytes.Split(iter.Key(), []byte(":"))
-		if len(spltData) < 2 {
-			continue
-		}
-		sp, err := strconv.ParseUint(string(spltData[1]), 10, 64)
+	isPosQS := false
+	cpos, err := rl.GetDatePos([]byte(time.Now().Format(DATE_LAYOUT)))
+	if err != nil {
+		logrus.Println("[Replication Thread] Replication: Date Get error, unableble to get current date pos for lastpos", err)
+		cpos, err = rl.GetDatePos([]byte(time.Now().Add(-(24  * time.Hour)).Format(DATE_LAYOUT)))
 		if err != nil {
-			logrus.Println("[Replication log] Error while looking key, skipping", err)
-			continue
+			logrus.Println("[Replication Thread] Replication: Date Get error, unable to get last date pos for lastpos, setting to 0", err)
+		} else {
+			isPosQS = true
 		}
-		if sp > lastpos {
-			lastpos = sp
+	} else {
+		isPosQS = true
+	}
+	var lastpos uint64 = 1
+	if isPosQS {
+		splt_pos := strings.Split(string(cpos), ":")
+		if len(splt_pos) > 1 {
+			tlp, err := strconv.ParseUint(splt_pos[1], 10, 64)
+			if err != nil {
+				logrus.Println("[Replication log] Error while extracting, skipping", err)
+			} else {
+				lastpos = tlp 
+			}
 		}
+	}
+	for  {
+		_, err := rl.DB.Get(append([]byte("log:"), []byte(strconv.FormatUint(lastpos, 10))...), nil)
+		if err == leveldb.ErrNotFound {
+			lastpos--
+			logrus.Println("starting log pos at", lastpos)
+			break
+		} else {
+			logrus.Println("Unable to get pos, skipping", err)
+		}
+		lastpos++
 	}
 	return lastpos, nil
 }
@@ -171,13 +182,24 @@ mainloop:
 			if err != nil {
 				logrus.Println("[REPLICATIO THREAD] Error while setting date pos", err)
 			}
+			cpos, err := rp.GetDatePos([]byte(time.Now().Format(DATE_LAYOUT)))
+			if err != nil {
+				logrus.Println("[Replication Thread] Replication: Date Get error, unableble to get current pos for testing", err)
+			} else {
+				logrus.Println("[Replication Thread] Current postion written to ", cpos)
+			}
 		case <-purgeTicker.C:
-			pos, err := rp.GetDatePos([]byte(time.Now().Add(-(24 * 7) * time.Hour).Format(DATE_LAYOUT)))
+			spos, err := rp.GetDatePos([]byte(time.Now().Add(-(24 * 12) * time.Hour).Format(DATE_LAYOUT)))
+			if err != nil {
+				logrus.Println("[Replication Thread] Replication: Date Get error, purge start seeting to 0", err)
+				spos = 0
+			}
+			epos, err := rp.GetDatePos([]byte(time.Now().Add(-(24 * 7) * time.Hour).Format(DATE_LAYOUT)))
 			if err != nil {
 				logrus.Println("[Replication Thread] Replication: Date Get error", err)
 				continue mainloop
 			}
-			err = rp.PurgeLogs(0, pos)
+			err = rp.PurgeLogs(spos, epos)
 			if err != nil {
 				logrus.Println("[Replication Thread]  error while purging", err)
 				continue mainloop

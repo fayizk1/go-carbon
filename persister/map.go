@@ -27,6 +27,8 @@ type throttleMetaData struct {
 	RateLimitPeriod int
 	SampleCount int
 	Enabled bool
+	DisabledWrite bool
+	DisabledTime int64
 }
 
 type LevelMap struct {
@@ -45,7 +47,7 @@ func NewMap(basepath string, rateLimit, rateLimitPeriod, sampleCount int) (*Leve
 	if err != nil {
 		panic(err)
 	}
-	tmd := &throttleMetaData{Expiry:0, SamplePatten : nil, RateLimit: rateLimit, RateLimitPeriod: rateLimitPeriod, SampleCount : sampleCount, Enabled : true}
+	tmd := &throttleMetaData{Expiry:0, SamplePatten : nil, RateLimit: rateLimit, RateLimitPeriod: rateLimitPeriod, SampleCount : sampleCount, Enabled : true, DisabledWrite: false, DisabledTime: 0}
 	return &LevelMap{Path : path, DB: db, ThrottleMetaData: tmd,}
 }
 
@@ -59,11 +61,18 @@ func (mp *LevelMap) GetShortKey(key string, iswrite bool) ([]byte, error) {
 	if err == leveldb.ErrNotFound {
 		mp.ThrottleMetaData.Lock()
 		defer mp.ThrottleMetaData.Unlock()
+		if mp.ThrottleMetaData.DisabledWrite {
+			if time.Now().Unix() > mp.ThrottleMetaData.DisabledTime {
+				mp.ThrottleMetaData.DisabledWrite = false
+			} else {
+				return nil, ErrCreateRateLimit
+			}
+		}
 		if mp.ThrottleMetaData.Enabled {
 			if mp.ThrottleMetaData.Expiry < time.Now().Unix() {
 				mp.ThrottleMetaData.Expiry = time.Now().Unix() + int64(mp.ThrottleMetaData.RateLimitPeriod)
 				mp.ThrottleMetaData.SamplePatten = nil
-				mp.ThrottleMetaData.Rate = 0
+				mp.ThrottleMetaData.Rate = 1
 			} else {
 				//Throttle Block
 				mp.ThrottleMetaData.Rate++
@@ -73,6 +82,8 @@ func (mp *LevelMap) GetShortKey(key string, iswrite bool) ([]byte, error) {
 					mp.ThrottleMetaData.SamplePatten = append(mp.ThrottleMetaData.SamplePatten, key)
 				}
 				if mp.ThrottleMetaData.Rate > mp.ThrottleMetaData.RateLimit {
+					mp.ThrottleMetaData.DisabledWrite = true
+					mp.ThrottleMetaData.DisabledTime = time.Now().Unix() + int64(mp.ThrottleMetaData.RateLimitPeriod * 60)
 					logrus.Errorf("[Persister] Rate Limit: Critical high create metric rate - %d, sample - %v, dropping packet", mp.ThrottleMetaData.Rate ,mp.ThrottleMetaData.SamplePatten)
 					return nil, ErrCreateRateLimit
 				}
