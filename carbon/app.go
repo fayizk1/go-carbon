@@ -237,7 +237,7 @@ func (app *App) startPersister() {
 			app.Config.Mail.From,
 			app.Config.Mail.To,
 			app.Config.Mail.Username,
-			app.Config.Mail.Password
+			app.Config.Mail.Password,
 		)
 		p.SetGraphPrefix(app.Config.Common.GraphPrefix)
 		p.SetMetricInterval(app.Config.Common.MetricInterval.Value())
