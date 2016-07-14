@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"strings"
 	leveldb_filter "github.com/syndtr/goleveldb/leveldb/filter"
 	leveldb_opt "github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -17,6 +18,7 @@ const MAP_CACHE_SIZE = 40 << 20
 
 var (
 	ErrCreateRateLimit = errors.New("High create request")
+	ErrNotAllowedPattern = errors.New("Not allowed chars")
 )
 
 type throttleMetaData struct {
@@ -30,6 +32,7 @@ type throttleMetaData struct {
 	Enabled bool
 	DisabledWrite bool
 	DisabledTime int64
+	DisablePeriod int
 }
 
 type LevelMap struct {
@@ -44,7 +47,7 @@ type LevelMap struct {
 	
 }
 
-func NewMap(basepath string, rateLimit, rateLimitPeriod, sampleCount int, MailServer, MailFrom string, MailTO []string, MailUsername string, MailPassword string) (*LevelMap) {
+func NewMap(basepath string, rateLimit, rateLimitPeriod, sampleCount, DisablePeriod int, MailServer, MailFrom string, MailTO []string, MailUsername string, MailPassword string) (*LevelMap) {
 	options := &leveldb_opt.Options{
 		BlockCacheCapacity : MAP_CACHE_SIZE,
 		Filter:             leveldb_filter.NewBloomFilter(15),
@@ -56,7 +59,9 @@ func NewMap(basepath string, rateLimit, rateLimitPeriod, sampleCount int, MailSe
 	}
 	tmd := &throttleMetaData{Expiry:0, SamplePatten : nil, RateLimit: rateLimit,
 		RateLimitPeriod: rateLimitPeriod, SampleCount : sampleCount, Enabled : true, DisabledWrite: false,
-		DisabledTime: 0,}
+		DisabledTime: 0,
+		DisablePeriod : DisablePeriod,
+	}
 	return &LevelMap{Path : path, DB: db, ThrottleMetaData: tmd,  MailServer : MailServer, MailFrom : MailFrom, MailTO : MailTO, MailUsername: MailUsername, MailPassword: MailPassword}
 }
 
@@ -76,6 +81,13 @@ func (mp *LevelMap) GetShortKey(key string, iswrite bool) ([]byte, error) {
 			} else {
 				return nil, ErrCreateRateLimit
 			}
+		}
+		if strings.Index(key, "..") != -1 { //double ..
+			logrus.Errorf("[persister] Unknown pattern: Dropping banned pattern, %s", key)
+			return nil, ErrNotAllowedPattern
+		} else if strings.IndexAny(key, "{:}()*&%") != -1 { //banned chars
+			logrus.Errorf("[persister] Unknown pattern: Dropping banned pattern, %s", key)
+			return nil, ErrNotAllowedPattern
 		}
 		if mp.ThrottleMetaData.Enabled {
 			if mp.ThrottleMetaData.Expiry < time.Now().Unix() {
@@ -167,6 +179,14 @@ func (mp *LevelMap) DisableThrottle() {
 	logrus.Println("Disabling throttle")
 	mp.ThrottleMetaData.Enabled = false
 }
+
+func (mp *LevelMap) ClearDisabledWrite() {
+	mp.ThrottleMetaData.Lock()
+	defer mp.ThrottleMetaData.Unlock()
+	logrus.Println("Disabling throttle")
+	mp.ThrottleMetaData.DisabledWrite = false
+}
+
 
 func (mp *LevelMap) ModifyThrottleLimit(limit int) {
 	mp.ThrottleMetaData.Lock()

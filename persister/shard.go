@@ -1,6 +1,7 @@
 package persister
 
 import (
+	"bytes"
 	"path"
 	"strconv"
 	"github.com/syndtr/goleveldb/leveldb/util"
@@ -59,6 +60,32 @@ func (this *Shard) RangeScan(start, end, keyname []byte) []points.Point {
 		return nil
 	}
 	return metrics
+}
+
+func (this *Shard) DeleteData(keyname []byte) error {
+	iter := this.DB.NewIterator(&util.Range{Start: keyname}, nil)
+	batch := new(leveldb.Batch)
+	var count uint64 = 0
+	for iter.Next() {
+		if !bytes.HasPrefix(iter.Key(), keyname) {
+			break
+		}
+		batch.Delete(iter.Key())
+		count++
+	}
+	iter.Release()
+	err := iter.Error()
+	if err != nil {
+		logrus.Println("[Shard]: Unable to iterate", err)
+		return err
+	}
+	err = this.DB.Write(batch, nil)
+	if err != nil {
+		logrus.Println("[Shard]: Unable to iterate", err)
+		return err
+	}
+	logrus.Println("Deleted key", keyname, count)
+	return nil
 }
 
 func (this *Shard) Close() {

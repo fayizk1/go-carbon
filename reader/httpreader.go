@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"net/http"
 	"encoding/json"
+	b64 "encoding/base64"
 	"github.com/Sirupsen/logrus"
 	"github.com/fayizk1/go-carbon/persister"
 	"github.com/fayizk1/go-carbon/points"
@@ -44,6 +45,9 @@ func StartHTTPReader() {
 		http.HandleFunc("/queryrange", serveQueryRange)
 		http.HandleFunc("/findnodes", serveFindNodes)
 		http.HandleFunc("/throttle", throttleHandler)
+		http.HandleFunc("/cleardisabledwrite", clearDisabledWrite)
+		http.HandleFunc("/deletedata", deleteData)
+		http.HandleFunc("/deleteshard", deleteShard)
 		err := http.ListenAndServe(h.listen, nil)
 		if err != nil {
 			log.Fatal("ListenAndServe: ", err)
@@ -57,6 +61,36 @@ func serveFindNodes(w http.ResponseWriter, r *http.Request) {
 	out, _ := json.Marshal(nodes)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Write(out)
+}
+
+func clearDisabledWrite(w http.ResponseWriter, r *http.Request) {
+	h.persistor.ClearDisabledWrite()
+}
+
+func deleteData(w http.ResponseWriter, r *http.Request) {
+	name := r.FormValue("name")
+	dec, err := b64.URLEncoding.DecodeString(name)
+	if err != nil {
+		http.Error(w, "BAD REQUEST[START]", 400)
+		return
+	}
+	name = string(dec)
+	err = h.persistor.DeleteData(name)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+}
+
+func deleteShard(w http.ResponseWriter, r *http.Request) {
+	name := r.FormValue("name")
+	archive := r.FormValue("archive")
+	apos, err := strconv.Atoi(archive)
+	if err != nil {
+		http.Error(w, "BAD REQUEST[START]", 400)
+		return
+	}
+	h.persistor.DeleteShard(apos, name)
 }
 
 func throttleHandler(w http.ResponseWriter, r *http.Request) {

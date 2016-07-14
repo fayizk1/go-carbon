@@ -111,6 +111,7 @@ type mailConfig struct {
 type rateLimit struct {
 	Period int `toml:"period"`
 	Limit  int `toml:"limit"`
+	DisablePeriod int `toml:"disableperiod"`
 }
 
 // Config ...
@@ -195,6 +196,7 @@ func NewConfig() *Config {
 		Rate : rateLimit{
 			Limit : 100,
 			Period: 60,
+			DisablePeriod: 3600,
 		},
 		Mail: mailConfig {
 			Server : "127.0.0.1",

@@ -64,6 +64,27 @@ func (sds *Shards) GetShard(name string, create bool) *Shard {
 	return shard
 }
 
+func (sds *Shards) GetShards() map[string]*Shard {
+	sds.Lock()
+	defer sds.Unlock()
+	return sds.list
+}
+
+func (sds *Shards) DeleteShard(basepath, name string) {
+	sds.Lock()
+	defer sds.Unlock()
+	shard, ok := sds.list[name];
+	if !ok {
+		return 
+	}
+	shard.Close()
+	delete(sds.list, name)
+	err := os.Rename(path.Join(basepath, name), path.Join(basepath, name+".deleted"))
+	if err != nil {
+		logrus.Println("Unable to rename", name, err)
+	}
+}
+
 func (sds *Shards) Close() {
 	for _, s := range sds.list {
 		s.Close()
@@ -213,6 +234,30 @@ func (ar *Archive) GetData(start, end int64, key []byte, sorting bool) Points {
 		sort.Sort(amp.points)
 	}
 	return amp.points
+}
+
+func (ar *Archive) DeleteData(key []byte) error {
+	ar.Lock()
+	defer ar.Unlock()
+	if !ar.isopen {
+		return nil
+	}
+	for _, v := range ar.shards.GetShards() {
+		err := v.DeleteData(key)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ar *Archive) DeleteShard(name string) {
+	ar.Lock()
+	defer ar.Unlock()
+	if !ar.isopen {
+		return
+	}
+	ar.shards.DeleteShard(ar.basepath, name)
 }
 
 func (ar *Archive) Close() {

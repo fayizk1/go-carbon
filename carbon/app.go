@@ -233,6 +233,7 @@ func (app *App) startPersister() {
 			app.Config.Replication.Logpath,
 			app.Config.Rate.Limit,
 			app.Config.Rate.Period,
+			app.Config.Rate.DisablePeriod,
 			app.Config.Mail.Server,
 			app.Config.Mail.From,
 			app.Config.Mail.To,

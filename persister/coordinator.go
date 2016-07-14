@@ -68,8 +68,8 @@ func (ars *Archives) Get(pos int) *Archive{
 
 func NewLevelStore(rootPath string, schemas *WhisperSchemas, aggregation *WhisperAggregation, in chan *points.Points,
 	confirm chan *points.Points, peerlist []string, rserver string, rpasswordHash string, Logpath string,
-	RateLimit, RateLimitPeriod int, MailServer string, MailFrom string, MailTO []string, MailUsername, MailPassword string) *LevelStore {
-	Map := NewMap(rootPath, RateLimit, RateLimitPeriod, 3, MailServer, MailFrom, MailTO, MailUsername, MailPassword)
+	RateLimit, RateLimitPeriod, DisablePeriod int, MailServer string, MailFrom string, MailTO []string, MailUsername, MailPassword string) *LevelStore {
+	Map := NewMap(rootPath, RateLimit, RateLimitPeriod, 3, DisablePeriod, MailServer, MailFrom, MailTO, MailUsername, MailPassword)
 	archives := NewArchives(rootPath, Map)
 	index := NewIndex(rootPath)
 	rplog := replication.NewReplicationLog(Logpath)
@@ -435,10 +435,44 @@ func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (
 	return ar.GetData(start, end, shortKey, sorting), step, npoints, string(aggM)
 }
 
+func (p *LevelStore) DeleteData(name string) (error) {
+	shortKey, err := p.Map.GetShortKey(name, false)
+	if err != nil {
+		logrus.Errorf("[persister] unable to get short key for %s", name)
+		return err
+	}
+	retnM, err := p.Map.GetSchema(shortKey)
+	if err != nil {
+		logrus.Errorf("[persister] Unable to get schema map for %s %v", name, err)
+		return err
+	}
+	retentions, err := ParseRetentionDefs(string(retnM))
+	if err != nil {
+		logrus.Errorf("[persister] Unable to parse retention for %s", name)
+		return err
+	}
+	for i, _ := range retentions {
+		ar := p.archives.Get(i)
+		err := ar.DeleteData(shortKey)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *LevelStore) DeleteShard(archive int, name string) {
+	p.archives.Get(archive).DeleteShard(name)
+}
+
 func (p *LevelStore) EnableThrottle() {
 	p.Map.EnableThrottle()
 }
 
 func (p *LevelStore) DisableThrottle() {
 	p.Map.DisableThrottle()
+}
+
+func (p *LevelStore) ClearDisabledWrite() {
+	p.Map.ClearDisabledWrite()
 }
