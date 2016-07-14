@@ -48,6 +48,7 @@ func StartHTTPReader() {
 		http.HandleFunc("/cleardisabledwrite", clearDisabledWrite)
 		http.HandleFunc("/deletedata", deleteData)
 		http.HandleFunc("/deleteshard", deleteShard)
+		http.HandleFunc("/lastdate", serveLastDate)
 		err := http.ListenAndServe(h.listen, nil)
 		if err != nil {
 			log.Fatal("ListenAndServe: ", err)
@@ -109,6 +110,21 @@ func throttleHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "BAD REQUEST", 400)
 	}
+}
+
+func serveLastDate(w http.ResponseWriter, r *http.Request) {
+	start, err := strconv.ParseInt(r.FormValue("start"), 10, 64)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("BAD REQUEST[START] -> %v", err), 400)
+		return
+	}
+	end, err := strconv.ParseInt(r.FormValue("end"), 10, 64)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("BAD REQUEST[END] -> %v", err), 400)
+		return
+	}
+	name := r.FormValue("name")
+	w.Write([]byte(strconv.FormatInt(h.persistor.LastDate(name, start, end), 10)))
 }
 
 func serveQueryRange(w http.ResponseWriter, r *http.Request) {
