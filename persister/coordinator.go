@@ -425,6 +425,8 @@ func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (
 	var step, arcpos, npoints int
 	for i, r := range retentions {
 		arcpos = i
+		step = r.SecondsPerPoint()
+		npoints = r.SecondsPerPoint()
 		if int64(time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint())) < end {
 			step = r.SecondsPerPoint()
 			npoints = r.SecondsPerPoint()
@@ -433,6 +435,33 @@ func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (
 	}
 	ar := p.archives.Get(arcpos)
 	return ar.GetData(start, end, shortKey, sorting), step, npoints, string(aggM)
+}
+
+func (p *LevelStore) LastDate(name string, start, end int64) int64 {
+	shortKey, err := p.Map.GetShortKey(name, false)
+	if err != nil {
+		logrus.Errorf("[persister] unable to get short key for %s", name)
+		return 0
+	}
+	retnM, err := p.Map.GetSchema(shortKey)
+	if err != nil {
+		logrus.Errorf("[persister] Unable to get schema map for %s %v", name, err)
+		return 0
+	}
+	retentions, err := ParseRetentionDefs(string(retnM))
+	if err != nil {
+		logrus.Errorf("[persister] Unable to parse retention for %s", name)
+		return 0
+	}
+	var arcpos int
+	for i, r := range retentions {
+		arcpos = i
+		if int64(time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint())) < end {
+			break
+		}
+	}
+	ar := p.archives.Get(arcpos)
+	return ar.LastDate(start, end, shortKey)
 }
 
 func (p *LevelStore) DeleteData(name string) (error) {

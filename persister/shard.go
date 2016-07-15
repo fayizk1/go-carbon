@@ -62,6 +62,21 @@ func (this *Shard) RangeScan(start, end, keyname []byte) []points.Point {
 	return metrics
 }
 
+func (this *Shard) LastDate(start, end, keyname []byte) int64 {
+	var lastdate int64 = 0
+	iter := this.DB.NewIterator(&util.Range{Start: start, Limit: end}, nil)
+	if iter.Last() {
+		lastdate = ExtractTs(iter.Key())
+	}
+	iter.Release()
+	err := iter.Error()
+	if err != nil {
+		logrus.Println("[Shard]: Unable to iterate", err)
+		return 0
+	}
+	return lastdate
+}
+
 func (this *Shard) DeleteData(keyname []byte) error {
 	iter := this.DB.NewIterator(&util.Range{Start: keyname}, nil)
 	batch := new(leveldb.Batch)

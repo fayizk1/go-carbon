@@ -236,6 +236,35 @@ func (ar *Archive) GetData(start, end int64, key []byte, sorting bool) Points {
 	return amp.points
 }
 
+func (ar *Archive) LastDate(start, end int64, key []byte) int64 {
+        if start > end {
+                logrus.Println("[Archive] Warning: query start time is higher than end time")
+                return 0
+        }
+	ar.RLock()
+	defer ar.RUnlock()
+	if !ar.isopen {
+		return 0
+	}
+	var lastDate int64 = 0
+	start_key := GenMetricKey(key, start)
+	end_key := GenMetricKey(key, end)
+	ct := time.Unix(start, 0).UTC()
+	et := time.Unix(end, 0).UTC()
+	for ; (ct.Unix() - (ct.Unix() %DAYSECONDS)) <= (et.Unix() - (et.Unix() % DAYSECONDS)); ct = ct.Add(24 * time.Hour) {
+		shard := ar.shards.GetShard(ct.Format("20060102"), false)
+		if shard == nil {
+			logrus.Println("[Archive] Unable to locate shard", ct.Format("20060102"))
+			continue
+		}
+		ld := shard.LastDate(start_key, end_key ,key)
+		if ld > lastDate {
+			lastDate = ld
+		}
+	}
+	return lastDate
+}
+
 func (ar *Archive) DeleteData(key []byte) error {
 	ar.Lock()
 	defer ar.Unlock()

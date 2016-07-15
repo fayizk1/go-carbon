@@ -346,6 +346,51 @@ mainloop:
 				logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
 				return
 			}
+		case "PURGELOG":
+			if !admin  {
+				_, err := conn.Write([]byte("please login as admin mode \n"))
+				if err != nil {
+					logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
+					return
+				}
+				continue mainloop
+			}
+			if len(pktSlice) < 3 {
+				_, err := conn.Write([]byte("Not enough args \n"))
+				if err != nil {
+					logrus.Println("[Replication Thread] Unable to write into admin mode, closing", err)
+					return
+				}
+				continue mainloop
+			}
+			sPos, err := strconv.ParseUint(pktSlice[1], 10, 64)
+			if err != nil {
+				_, err = conn.Write([]byte(err.Error()+"\n"))
+				if err != nil {
+					logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
+					return
+				}
+				continue mainloop
+			}			
+			ePos, err := strconv.ParseUint(pktSlice[2], 10, 64)
+			if err != nil {
+				_, err = conn.Write([]byte(err.Error()+"\n"))
+				if err != nil {
+					logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
+					return
+				}
+				continue mainloop
+			}
+			message := "Purged logs from  " + pktSlice[1] + " to "+  pktSlice[2] + "\n"
+			err = rt.rlog.PurgeLogs(sPos, ePos)
+			if err != nil {
+				message = "Unable to purge the logs " +err.Error() + "\n" 
+			}
+ 			_, err = conn.Write([]byte(message))
+			if err != nil {
+				logrus.Println("[Replication Thread] Unable send packet to client, closining", err)
+				return
+			}
 		case "SHOWREADERS":
 			var statusMsg string
 			for k, v := range rt.Readers {
