@@ -82,11 +82,11 @@ func (mp *LevelMap) GetShortKey(key string, iswrite bool) ([]byte, error) {
 				return nil, ErrCreateRateLimit
 			}
 		}
-		if strings.Index(key, "..") != -1 { //double ..
-			logrus.Errorf("[persister] Unknown pattern: Dropping banned pattern, %s", key)
+		if strings.Index(okey, "..") != -1 { //double ..
+			logrus.Errorf("[persister] Unknown pattern: Dropping banned pattern, %s", okey)
 			return nil, ErrNotAllowedPattern
-		} else if strings.IndexAny(key, "{:}()*&%") != -1 { //banned chars
-			logrus.Errorf("[persister] Unknown pattern: Dropping banned pattern, %s", key)
+		} else if strings.IndexAny(okey, "{:}()*&%") != -1 { //banned chars
+			logrus.Errorf("[persister] Unknown pattern: Dropping banned pattern, %s", okey)
 			return nil, ErrNotAllowedPattern
 		}
 		if mp.ThrottleMetaData.Enabled {
