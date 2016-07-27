@@ -84,12 +84,19 @@ start:
 }
 
 func (rl *LevelReplicationLog) PurgeLogs(sPos uint64, ePos uint64) (error) {
-	batch := new(leveldb.Batch)
+	errCount := 0
 	for i := sPos; i <= ePos; i++ {
-		batch.Delete(append([]byte("log:"), []byte(strconv.FormatUint(i, 10))...))
+		err := rl.DB.Delete(append([]byte("log:"), []byte(strconv.FormatUint(i, 10))...), nil)
+		if err != nil {
+			errCount += 1
+		}
+		//Wait few milli
+		if i % 100000 == 0 {
+			time.Sleep(10 * time.Second)
+		}
 	}
-	err := rl.DB.Write(batch, nil)
-	return err
+	logrus.Printf("[Replication Thread] Completed PurgeLog from %d to %d, error Count %d", sPos, ePos, errCount)
+	return nil
 }
 
 func (rl *LevelReplicationLog) GetCurrentPos() (uint64, error) {

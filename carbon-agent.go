@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"syscall"
-
+	_ "net/http/pprof"
 	"github.com/Sirupsen/logrus"
 	"github.com/fayizk1/go-carbon/carbon"
 	"github.com/fayizk1/go-carbon/logging"

@@ -427,7 +427,7 @@ func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (
 		arcpos = i
 		step = r.SecondsPerPoint()
 		npoints = r.SecondsPerPoint()
-		if int64(time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint())) < end {
+		if int64(time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint())) > start {
 			step = r.SecondsPerPoint()
 			npoints = r.SecondsPerPoint()
 			break
