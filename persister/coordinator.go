@@ -427,7 +427,7 @@ func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (
 		arcpos = i
 		step = r.SecondsPerPoint()
 		npoints = r.SecondsPerPoint()
-		if int64(time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint())) > start {
+		if int64(time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint())) < start {
 			step = r.SecondsPerPoint()
 			npoints = r.SecondsPerPoint()
 			break
@@ -456,7 +456,7 @@ func (p *LevelStore) LastDate(name string, start, end int64) int64 {
 	var arcpos int
 	for i, r := range retentions {
 		arcpos = i
-		if int64(time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint())) < end {
+		if int64(time.Now().Unix() - int64(r.NumberOfPoints() * r.SecondsPerPoint())) < start {
 			break
 		}
 	}
