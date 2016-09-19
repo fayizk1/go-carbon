@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 	"sort"
+	"io/ioutil"
 	"strconv"
 	"net/http"
 	"encoding/json"
@@ -44,6 +45,7 @@ func StartHTTPReader() {
 	go func() {
 		http.HandleFunc("/queryrange", serveQueryRange)
 		http.HandleFunc("/findnodes", serveFindNodes)
+		http.HandleFunc("/setforcenode", serveSetForceNode)		
 		http.HandleFunc("/throttle", throttleHandler)
 		http.HandleFunc("/cleardisabledwrite", clearDisabledWrite)
 		http.HandleFunc("/deletedata", deleteData)
@@ -63,6 +65,25 @@ func serveFindNodes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Write(out)
 }
+
+func serveSetForceNode(w http.ResponseWriter, r *http.Request) {
+	name := r.FormValue("name")
+	var t []string
+	content, _ := ioutil.ReadAll(r.Body)
+	log.Println(string(content))
+	err := json.Unmarshal(content, &t)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	err = h.persistor.ForceSetIndex(name, t)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Write([]byte("Success"))
+}
+
 
 func clearDisabledWrite(w http.ResponseWriter, r *http.Request) {
 	h.persistor.ClearDisabledWrite()

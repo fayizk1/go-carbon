@@ -401,6 +401,10 @@ func (p *LevelStore) FindNodes(key string) []IndexType {
 	return children
 }
 
+func (p *LevelStore) ForceSetIndex(name string, value []string) error {
+	return p.index.ForceSetIndex(name, value)
+}
+
 func (p *LevelStore) GetRangeData(name string, start, end int64, sorting bool) (Points, int, int, string) {
 	shortKey, err := p.Map.GetShortKey(name, false)
 	if err != nil {

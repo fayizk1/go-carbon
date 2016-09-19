@@ -100,6 +100,17 @@ func (idx *LevelIndex) CreateIndex(name string) error {
 	return nil
 }
 
+
+func (idx *LevelIndex) ForceSetIndex(name string, data []string) error {
+	if data == nil || name == ""{
+		return errors.New("No value passed")
+	}
+	val, _ := json.Marshal(data)
+	err := idx.DB.Put([]byte(name), val, nil)
+	return err
+}
+
+
 func (idx *LevelIndex) GetChildrenSpecial(resolved, unResolved []string) ([]IndexType, error) {
 	var parent string
 	var AllChildren []IndexType
